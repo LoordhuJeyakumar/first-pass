@@ -1,6 +1,6 @@
 # First Pass — runtime and test dependencies.
-# Google AI SDK packages (google-adk, google-genai, etc.) will be added here
-# as each agent module is implemented. Do not list packages before they are imported.
+# Google AI SDK and runtime dependencies pinned to exact verified versions.
 
-requests==2.33.1
 pytest==9.1.1
+google-adk==2.6.2
+mcp==1.29.0
