@@ -145,11 +145,14 @@ def evaluate_master_against_spec(master: Dict[str, Any], spec: Dict[str, Any]) -
     audio_langs = [t.get("language") for t in audio_tracks if t.get("language")]
     sub_langs = [t.get("language") for t in timed_text if t.get("language")]
 
+    clauses_by_id = {c.get("clause_id"): c.get("text", "") for c in clauses if "clause_id" in c}
+
     for clause in clauses:
         clause_id = clause.get("clause_id")
         domain = clause.get("domain")
         check = clause.get("check", {})
         severity_on_fail = clause.get("severity_on_fail", "blocker")
+        clause_text = clauses_by_id.get(clause_id, "")
 
         # Audio Loudness Check
         if domain == "audio" and check.get("op") == "within":
@@ -165,6 +168,7 @@ def evaluate_master_against_spec(master: Dict[str, Any], spec: Dict[str, Any]) -
                             "clause_id": clause_id,
                             "domain": domain,
                             "severity": severity_on_fail,
+                            "clause_text": clause_text,
                             "language": lang,
                             "measured": res["measured"],
                             "expected": res["expected"],
@@ -187,6 +191,7 @@ def evaluate_master_against_spec(master: Dict[str, Any], spec: Dict[str, Any]) -
                         "clause_id": clause_id,
                         "domain": domain,
                         "severity": severity_on_fail,
+                        "clause_text": clause_text,
                         "measured": res["measured"],
                         "expected": res["expected"],
                         "message": f"[{clause_id}] Video: {res['message']}",
@@ -205,6 +210,9 @@ def evaluate_master_against_spec(master: Dict[str, Any], spec: Dict[str, Any]) -
                     "clause_id": clause_id,
                     "domain": domain,
                     "severity": severity_on_fail,
+                    "clause_text": clause_text,
+                    "measured": res.get("measured", f"missing {', '.join(res['missing_languages'])}"),
+                    "expected": res.get("expected", f"subtitles for {', '.join(sorted(audio_langs))}"),
                     "missing_languages": res["missing_languages"],
                     "message": f"[{clause_id}] Timed Text: {res['message']}",
                 }
@@ -223,6 +231,9 @@ def evaluate_master_against_spec(master: Dict[str, Any], spec: Dict[str, Any]) -
                     "clause_id": clause_id,
                     "domain": domain,
                     "severity": severity_on_fail,
+                    "clause_text": clause_text,
+                    "measured": "invalid pattern",
+                    "expected": "valid naming pattern",
                     "message": f"[{clause_id}] Packaging: {res['message']}",
                 }
                 findings.append(finding)

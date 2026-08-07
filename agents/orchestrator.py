@@ -51,16 +51,22 @@ def map_severity_to_grafana(severity: str) -> str:
 def get_google_auth_credentials() -> Any:
     """
     Resolves Google Cloud Application Default Credentials (ADC).
+    Falls back to obtaining an access token from gcloud CLI if default credentials are not set.
     Fails loudly with RuntimeError if credentials cannot be resolved.
     """
     try:
         creds, _ = google.auth.default()
         return creds
-    except Exception as exc:
-        raise RuntimeError(
-            "Failed to resolve Google Cloud Application Default Credentials (ADC). "
-            "Please run 'gcloud auth application-default login' or set GOOGLE_APPLICATION_CREDENTIALS."
-        ) from exc
+    except Exception:
+        try:
+            import subprocess
+            token = subprocess.check_output(["gcloud", "auth", "print-access-token"], text=True).strip()
+            return google.oauth2.credentials.Credentials(token)
+        except Exception as exc:
+            raise RuntimeError(
+                "Failed to resolve Google Cloud Application Default Credentials (ADC). "
+                "Please run 'gcloud auth application-default login' or set GOOGLE_APPLICATION_CREDENTIALS."
+            ) from exc
 
 
 def validate_environment() -> Dict[str, str]:
@@ -109,30 +115,73 @@ def format_finding_ground_truth(finding: Dict[str, Any]) -> Dict[str, str]:
     Formats exact ground-truth tokens for a finding object.
     Replaces None measured values with 'not present'.
     """
+    clause_id = str(finding.get("clause_id", "N/A"))
+    clause_text = str(finding.get("clause_text", ""))
     measured = finding.get("measured")
     measured_str = "not present" if measured is None else str(measured)
+    expected = finding.get("expected")
+    expected_str = "N/A" if expected is None else str(expected)
+
     return {
-        "clause_id": str(finding.get("clause_id", "N/A")),
+        "clause_id": clause_id,
         "severity": str(finding.get("severity", "blocker")),
+        "clause_text": clause_text,
         "measured": measured_str,
+        "expected": expected_str,
+        "language": str(finding.get("language", "")),
         "message": str(finding.get("message", "")),
     }
 
 
-def assert_ground_truth_preservation(prompt_text: str, findings: List[Dict[str, Any]]) -> None:
+def extract_text_and_tool_args_from_events(agent_events: List[Any]) -> str:
     """
-    Asserts that every ground-truth clause ID and measured value appears verbatim in prompt text.
-    Ensures zero hallucination or mathematical mutation by the LLM.
+    Extracts all text content and tool-call argument strings from ADK agent_events.
     """
+    extracted_texts = []
+    for event in agent_events:
+        content = getattr(event, "content", None)
+        if content and hasattr(content, "parts"):
+            for part in content.parts:
+                if hasattr(part, "text") and part.text:
+                    extracted_texts.append(part.text)
+                if hasattr(part, "function_call") and part.function_call:
+                    fc = part.function_call
+                    if hasattr(fc, "args") and fc.args:
+                        extracted_texts.append(json.dumps(fc.args))
+
+        if hasattr(event, "get_function_calls"):
+            try:
+                calls = event.get_function_calls()
+                for call in calls:
+                    if hasattr(call, "args") and call.args:
+                        extracted_texts.append(json.dumps(call.args))
+            except Exception:
+                pass
+
+    return "\n".join(extracted_texts)
+
+
+def assert_ground_truth_preservation(agent_events: List[Any], findings: List[Dict[str, Any]]) -> None:
+    """
+    Asserts that every ground-truth clause ID and measured value appears verbatim in the agent's
+    final response or captured tool-call arguments within agent_events.
+    Raises AssertionError if any ground truth token is missing.
+    """
+    combined_output = extract_text_and_tool_args_from_events(agent_events)
+
     for finding in findings:
         truth = format_finding_ground_truth(finding)
         clause_id = truth["clause_id"]
         measured = truth["measured"]
 
-        if clause_id not in prompt_text:
-            raise AssertionError(f"Ground-truth clause ID '{clause_id}' missing from agent context prompt!")
-        if measured not in prompt_text and measured != "not present":
-            raise AssertionError(f"Ground-truth measured value '{measured}' missing from agent context prompt!")
+        if clause_id not in combined_output:
+            raise AssertionError(
+                f"Ground-truth clause ID '{clause_id}' missing from agent response and captured tool calls!"
+            )
+        if measured not in combined_output and measured != "not present":
+            raise AssertionError(
+                f"Ground-truth measured value '{measured}' missing from agent response and captured tool calls!"
+            )
 
 
 async def run_adk_orchestration(
@@ -151,7 +200,7 @@ async def run_adk_orchestration(
     )
     mcp_toolset = McpToolset(
         connection_params=connection_params,
-        tool_filter=["create_incident"],
+        tool_filter=["create_incident", "add_activity_to_incident", "create_annotation"],
     )
 
     try:
@@ -165,6 +214,7 @@ async def run_adk_orchestration(
 
         # Ground truth prompt context
         formatted_findings = [format_finding_ground_truth(f) for f in findings]
+        clause_ids = [f["clause_id"] for f in formatted_findings]
         prompt_data = {
             "master_id": master_id,
             "verdict": report.get("verdict"),
@@ -176,9 +226,6 @@ async def run_adk_orchestration(
 
         prompt_json = json.dumps(prompt_data, indent=2)
 
-        # Invariant check: verify ground truth tokens exist in prompt
-        assert_ground_truth_preservation(prompt_json, findings)
-
         user_prompt = f"""
 You are the First Pass Quality Control Agent.
 A technical master delivery evaluation completed with verdict: {report.get('verdict')}.
@@ -189,14 +236,18 @@ Blockers Count: {blocker_count}
 Structured Findings Ground Truth:
 {prompt_json}
 
-Instruction:
-1. Examine the structured findings.
-2. If there are delivery blockers (blocker_count > 0), call the `create_incident` tool.
-3. Pass the parameters to `create_incident`:
+Instructions:
+1. Examine the structured findings. If there are delivery blockers (blocker_count > 0):
+2. Call `create_incident`:
    - `title`: "Delivery Blocker: {master_id} ({blocker_count} Spec Non-Conformances)"
    - `severity`: "{mapped_severity}"
    - `roomPrefix`: "first-pass"
-4. Explain clearly in your final response which spec clauses failed, retaining the exact clause IDs and measured values verbatim.
+3. Call `add_activity_to_incident` using the incident ID returned by `create_incident` (e.g. incidentID):
+   - `incidentId`: the ID returned from create_incident
+   - `body`: Detail each blocker finding. For every blocker, include its clause_id, spec clause_text, measured value, and expected value verbatim.
+4. Call `create_annotation` to create a timeline annotation:
+   - `text`: Timeline annotation describing the delivery blocker for {master_id}, explicitly referencing the violated clause IDs ({', '.join(clause_ids)}) and brief summary.
+5. In your final response, explain the spec clause failures retaining the exact clause IDs, measured values, and expected values verbatim. Do not compute or alter any numeric or measured values.
 """
 
         logger.info("Initializing Google ADK Gemini model & LlmAgent (model: gemini-2.5-flash)...")
@@ -228,7 +279,10 @@ Instruction:
             agent_events.append(event)
             logger.info(f"ADK Event received: {event}")
 
-        logger.info("ADK execution completed cleanly.")
+        logger.info("ADK execution completed cleanly. Asserting ground truth preservation against model response and tool calls...")
+        assert_ground_truth_preservation(agent_events, findings)
+
+        logger.info("Ground truth preservation verified successfully.")
         return {"status": "ok", "events_count": len(agent_events)}
 
     finally:
