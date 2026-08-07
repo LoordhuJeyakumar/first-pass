@@ -1,0 +1,11 @@
+services:
+  mcp-grafana:
+    image: grafana/mcp-grafana:latest
+    container_name: mcp-grafana
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    env_file:
+      - ../.env
+    entrypoint: ["/app/mcp-grafana", "--transport", "streamable-http", "--address", "0.0.0.0:8000"]
+    command: ["--enabled-tools", "incident,dashboard,alerting,annotation,search,query"]

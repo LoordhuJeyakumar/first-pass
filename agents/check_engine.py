@@ -1,0 +1,256 @@
+"""
+First Pass — Deterministic QC Check Engine
+
+Pure Python evaluation engine for technical master metadata against platform delivery specifications.
+No LLM calls or non-deterministic logic. 100% reproducible and unit-testable.
+"""
+
+from typing import Dict, Any, List
+
+
+def evaluate_audio_loudness(loudness_lufs: float, target: float = -27.0, tolerance: float = 2.0) -> Dict[str, Any]:
+    """
+    Evaluates integrated audio loudness against a target LUFS and tolerance.
+    Clause A-2.1: Integrated loudness must be target +/- tolerance LUFS.
+    """
+    min_allowed = target - tolerance
+    max_allowed = target + tolerance
+
+    if min_allowed <= loudness_lufs <= max_allowed:
+        return {
+            "passed": True,
+            "severity": None,
+            "message": f"Audio loudness {loudness_lufs:.1f} LUFS within target {target:.1f} ± {tolerance:.1f} LUFS.",
+            "measured": f"{loudness_lufs:.1f} LUFS",
+            "expected": f"{target:.1f} ± {tolerance:.1f} LUFS",
+        }
+    else:
+        diff = loudness_lufs - target
+        sign = "+" if diff > 0 else ""
+        return {
+            "passed": False,
+            "severity": "blocker",
+            "message": f"Audio loudness deviation: measured {loudness_lufs:.1f} LUFS ({sign}{diff:.1f} LUFS from {target:.1f} target, tolerance ±{tolerance:.1f} LU).",
+            "measured": f"{loudness_lufs:.1f} LUFS",
+            "expected": f"{target:.1f} ± {tolerance:.1f} LUFS",
+        }
+
+
+def evaluate_video_color_primaries(color_primaries: str, target: str = "BT.2020") -> Dict[str, Any]:
+    """
+    Evaluates video color primaries.
+    Clause V-1.3: HDR masters must carry specified primaries (e.g. BT.2020).
+    """
+    if color_primaries == target:
+        return {
+            "passed": True,
+            "severity": None,
+            "message": f"Video color primaries '{color_primaries}' matches required target '{target}'.",
+            "measured": color_primaries,
+            "expected": target,
+        }
+    else:
+        return {
+            "passed": False,
+            "severity": "blocker",
+            "message": f"Invalid video color primaries: measured '{color_primaries}', expected '{target}'.",
+            "measured": color_primaries,
+            "expected": target,
+        }
+
+
+def evaluate_timed_text_coverage(subtitle_languages: List[str], audio_languages: List[str]) -> Dict[str, Any]:
+    """
+    Evaluates subtitle language coverage against delivered audio dub tracks.
+    Clause T-4.2: Every delivered audio language requires a matching subtitle track.
+    """
+    audio_set = set(audio_languages)
+    sub_set = set(subtitle_languages)
+    missing = sorted(list(audio_set - sub_set))
+
+    if not missing:
+        return {
+            "passed": True,
+            "severity": None,
+            "message": f"All {len(audio_languages)} audio languages have matching timed text tracks.",
+            "missing_languages": [],
+        }
+    else:
+        return {
+            "passed": False,
+            "severity": "blocker",
+            "message": f"Missing subtitle track(s) for audio language(s): {', '.join(missing)}.",
+            "missing_languages": missing,
+        }
+
+
+def evaluate_packaging_naming(naming_pattern_ok: bool) -> Dict[str, Any]:
+    """
+    Evaluates package component naming conventions.
+    Clause P-1.1: Component naming pattern compliance.
+    """
+    if naming_pattern_ok:
+        return {
+            "passed": True,
+            "severity": None,
+            "message": "Package component naming conformed to delivery pattern.",
+        }
+    else:
+        return {
+            "passed": False,
+            "severity": "warning",
+            "message": "Component naming pattern deviation detected in package metadata.",
+        }
+
+
+def evaluate_india_mode_gating(certifications: Dict[str, str], original_language: str) -> Dict[str, Any]:
+    """
+    Evaluates CBFC regulatory certification gating for Pan-India multi-language releases.
+    Rule: Original language certification is required before dubbed versions clear clearance.
+    """
+    orig_status = certifications.get(original_language, "pending")
+    original_cleared = (orig_status == "cleared")
+
+    return {
+        "original_language": original_language,
+        "original_status": orig_status,
+        "original_cleared": original_cleared,
+        "dubs_blocked": not original_cleared,
+        "message": (
+            f"Original language '{original_language}' certificate is '{orig_status}'."
+            if original_cleared
+            else f"Original language '{original_language}' certificate is 'pending'; dub clearances are gated."
+        ),
+    }
+
+
+def evaluate_master_against_spec(master: Dict[str, Any], spec: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Evaluates a complete master metadata dictionary against a platform specification dictionary.
+    Returns structured finding objects and an overall delivery verdict (PASS / REJECT).
+    """
+    findings = []
+    blocker_count = 0
+    warning_count = 0
+
+    clauses = spec.get("clauses", [])
+    
+    # Extract master components
+    audio_tracks = master.get("audio_tracks", [])
+    video = master.get("video", {})
+    timed_text = master.get("timed_text", [])
+    packaging = master.get("packaging", {})
+    certifications = master.get("certification", {})
+
+    audio_langs = [t.get("language") for t in audio_tracks if t.get("language")]
+    sub_langs = [t.get("language") for t in timed_text if t.get("language")]
+
+    for clause in clauses:
+        clause_id = clause.get("clause_id")
+        domain = clause.get("domain")
+        check = clause.get("check", {})
+        severity_on_fail = clause.get("severity_on_fail", "blocker")
+
+        # Audio Loudness Check
+        if domain == "audio" and check.get("op") == "within":
+            target = check.get("target", -27.0)
+            tolerance = check.get("tolerance", 2.0)
+            for track in audio_tracks:
+                lang = track.get("language", "unknown")
+                loudness = track.get("integrated_loudness_lufs")
+                if loudness is not None:
+                    res = evaluate_audio_loudness(loudness, target=target, tolerance=tolerance)
+                    if not res["passed"]:
+                        finding = {
+                            "clause_id": clause_id,
+                            "domain": domain,
+                            "severity": severity_on_fail,
+                            "language": lang,
+                            "measured": res["measured"],
+                            "expected": res["expected"],
+                            "message": f"[{clause_id}] {lang} audio: {res['message']}",
+                        }
+                        findings.append(finding)
+                        if severity_on_fail == "blocker":
+                            blocker_count += 1
+                        else:
+                            warning_count += 1
+
+        # Video Primaries Check
+        elif domain == "video" and check.get("op") == "equals":
+            target = check.get("target", "BT.2020")
+            primaries = video.get("color_primaries")
+            if primaries:
+                res = evaluate_video_color_primaries(primaries, target=target)
+                if not res["passed"]:
+                    finding = {
+                        "clause_id": clause_id,
+                        "domain": domain,
+                        "severity": severity_on_fail,
+                        "measured": res["measured"],
+                        "expected": res["expected"],
+                        "message": f"[{clause_id}] Video: {res['message']}",
+                    }
+                    findings.append(finding)
+                    if severity_on_fail == "blocker":
+                        blocker_count += 1
+                    else:
+                        warning_count += 1
+
+        # Timed Text Language Coverage
+        elif domain == "timed_text" and check.get("op") == "language_coverage":
+            res = evaluate_timed_text_coverage(sub_langs, audio_langs)
+            if not res["passed"]:
+                finding = {
+                    "clause_id": clause_id,
+                    "domain": domain,
+                    "severity": severity_on_fail,
+                    "missing_languages": res["missing_languages"],
+                    "message": f"[{clause_id}] Timed Text: {res['message']}",
+                }
+                findings.append(finding)
+                if severity_on_fail == "blocker":
+                    blocker_count += 1
+                else:
+                    warning_count += 1
+
+        # Packaging Naming
+        elif domain == "packaging" and check.get("op") == "equals":
+            pattern_ok = packaging.get("naming_pattern_ok", True)
+            res = evaluate_packaging_naming(pattern_ok)
+            if not res["passed"]:
+                finding = {
+                    "clause_id": clause_id,
+                    "domain": domain,
+                    "severity": severity_on_fail,
+                    "message": f"[{clause_id}] Packaging: {res['message']}",
+                }
+                findings.append(finding)
+                if severity_on_fail == "blocker":
+                    blocker_count += 1
+                else:
+                    warning_count += 1
+
+    # Check India Mode Gating if present
+    india_mode = spec.get("india_mode", {})
+    india_report = None
+    if india_mode and certifications:
+        # Find original language track
+        orig_lang = "ta-IN"
+        for t in audio_tracks:
+            if t.get("role") == "original":
+                orig_lang = t.get("language", "ta-IN")
+                break
+        india_report = evaluate_india_mode_gating(certifications, orig_lang)
+
+    verdict = "REJECT" if blocker_count > 0 else "PASS"
+
+    return {
+        "master_id": master.get("master_id", "UNKNOWN"),
+        "spec_id": spec.get("spec_id", "UNKNOWN"),
+        "verdict": verdict,
+        "blocker_count": blocker_count,
+        "warning_count": warning_count,
+        "findings": findings,
+        "india_mode": india_report,
+    }

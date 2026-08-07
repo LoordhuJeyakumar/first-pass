@@ -1,0 +1,26 @@
+{
+  "master_id": "STRM-2026-0142-BLOCKERS",
+  "title": "Synthetic Feature (Blockers Master)",
+  "video": {
+    "resolution": "3840x2160",
+    "frame_rate": 24.0,
+    "color_primaries": "BT.2020",
+    "transfer": "PQ",
+    "hdr_metadata": { "format": "HDR10", "max_cll": 1000, "max_fall": 400 }
+  },
+  "audio_tracks": [
+    { "language": "ta-IN", "role": "original", "channels": "5.1", "integrated_loudness_lufs": -24.0, "true_peak_dbtp": -1.0 },
+    { "language": "hi-IN", "role": "dub", "channels": "5.1", "integrated_loudness_lufs": -27.1, "true_peak_dbtp": -2.0 }
+  ],
+  "timed_text": [
+    { "language": "hi-IN", "type": "subtitle", "format": "IMSC1" }
+  ],
+  "packaging": {
+    "naming_pattern_ok": true,
+    "components": ["video", "audio", "timed_text", "metadata"]
+  },
+  "certification": {
+    "ta-IN": "cleared",
+    "hi-IN": "pending"
+  }
+}

@@ -1,0 +1,38 @@
+# Secrets — never commit
+.env
+.env.*
+!.env.example
+*.token
+*credentials*.json
+service-account*.json
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+*.egg-info/
+
+# Node
+node_modules/
+.next/
+dist/
+
+# OS / editor
+.DS_Store
+*.swp
+.idea/
+
+# Local artifacts
+*.log
+.cache/
+
+# Internal working set — planning docs, personal notes, raw research. Never committed.
+# This repo is public at submission, so the boundary is: docs/ is written for readers,
+# docs/internal/ is written for us. See docs/DISCLOSURE.md.
+# Promoting anything out of here is a deliberate per-document decision, not a default.
+docs/internal/
+
+# Per-project local agent notes — machine-local, never shared
+*.local.md

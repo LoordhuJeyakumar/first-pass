@@ -1,0 +1,55 @@
+{
+  "spec_id": "STREAMONE-DELIVERY-2026",
+  "title": "StreamOne Platform Global Delivery Specification v2026.1",
+  "clauses": [
+    {
+      "clause_id": "A-2.1",
+      "domain": "audio",
+      "text": "Integrated loudness of every audio track must be -27 LUFS with a tolerance of +/-2 LU.",
+      "check": {
+        "field": "audio_tracks[].integrated_loudness_lufs",
+        "op": "within",
+        "target": -27.0,
+        "tolerance": 2.0
+      },
+      "severity_on_fail": "blocker"
+    },
+    {
+      "clause_id": "V-1.3",
+      "domain": "video",
+      "text": "HDR masters must carry BT.2020 primaries with PQ transfer.",
+      "check": {
+        "field": "video.color_primaries",
+        "op": "equals",
+        "target": "BT.2020"
+      },
+      "severity_on_fail": "blocker"
+    },
+    {
+      "clause_id": "T-4.2",
+      "domain": "timed_text",
+      "text": "Every delivered language requires a subtitle track.",
+      "check": {
+        "op": "language_coverage",
+        "of": "timed_text",
+        "against": "audio_tracks"
+      },
+      "severity_on_fail": "blocker"
+    },
+    {
+      "clause_id": "P-1.1",
+      "domain": "packaging",
+      "text": "Component naming must follow the StreamOne pattern.",
+      "check": {
+        "field": "packaging.naming_pattern_ok",
+        "op": "equals",
+        "target": true
+      },
+      "severity_on_fail": "warning"
+    }
+  ],
+  "india_mode": {
+    "required_languages": ["ta-IN", "te-IN", "hi-IN", "kn-IN", "ml-IN"],
+    "gating_rule": "original_language_certification_required_before_dub_clearance"
+  }
+}

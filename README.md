@@ -1,0 +1,60 @@
+# First Pass
+
+**Agents that catch a film delivery rejection before the platform does.**
+
+Roughly a quarter of film masters fail platform Quality Control (QC) on first submission — most often for mundane, preventable reasons such as an audio mix delivered at theatrical loudness (~−24 LUFS) against a streaming platform spec requiring ~−27 LUFS. Every rejection incurs redelivery fees and risks missing an announced premiere date.
+
+First Pass treats delivery readiness as an **observability and automated action problem**. Powered by Google ADK and Gemini on Vertex AI, a multi-agent crew evaluates technical master metadata against a platform's delivery specification and **acts** directly inside Grafana Cloud through the Grafana MCP server:
+
+- Builds and updates a **Delivery Readiness** dashboard.
+- Generates **alert rules** derived directly from delivery specification clauses.
+- Opens an **incident** when a delivery blocker is detected, annotated with the breached spec clause.
+- Posts a ranked, human-readable **fix plan** directly into the incident timeline.
+
+The operator gets a clear operational answer: **PASS likely** or **REJECT — N blockers**, each traced back to its specific spec clause, supported by a live action ledger of every agent action. For pan-India releases, India mode adds a multi-language readiness grid modeling Central Board of Film Certification (CBFC) gating dependencies across simultaneous multi-language releases.
+
+Built for the **Agentic Cinema Hackathon (Grafana Track)**, 2026.
+
+## Architecture & System Design
+
+Full details are documented in [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
+
+In brief:
+- **Orchestration**: Google ADK agents (Python) run on Google Cloud Platform with Gemini models via Vertex AI.
+- **Grafana MCP Server**: A self-hosted `grafana/mcp-grafana` server running in Docker on a virtual machine, configured with `-t streamable-http` and authenticated using a Grafana service-account token.
+- **Unattended Authentication**: The MCP server is self-hosted rather than using Grafana Cloud's hosted endpoint because the hosted endpoint authenticates via interactive OAuth 2.1 without a machine-token path. Self-hosting with a service-account token allows unattended agents to operate reliably without human manual authentication prompts.
+- **Deterministic Check Engine**: All measurements and clause checks are performed in pure, deterministic Python code. The LLM orchestrates workflows, interprets specs, and generates prose fix plans, but never invents or calculates numbers.
+
+For an introduction to film delivery QC terminology, see [`docs/DOMAIN.md`](docs/DOMAIN.md).
+
+## Setup & Environment
+
+1. Copy the template and set up your environment variables (never commit `.env`):
+   ```bash
+   cp .env.example .env
+   ```
+2. **Grafana Cloud**: Create a Grafana Cloud stack. Ensure an administrator accepts the Grafana Assistant terms, create a service account with the Editor role, and generate a service-account token.
+3. **Google Cloud**: Create a GCP project, activate billing, and enable the Vertex AI API (`aiplatform.googleapis.com`).
+4. **MCP Server**: Refer to [`mcp/`](mcp/) for Docker Compose instructions to deploy `grafana/mcp-grafana` on your GCE Virtual Machine.
+5. **Agents**: Refer to [`agents/`](agents/) for installation and run instructions.
+
+## Data Provenance
+
+All master metadata and delivery specifications in [`data/`](data/) are **synthetic**, authored specifically for this project and modeled after publicly documented structures (such as MediaInfo/ffprobe structures and public delivery specs). The platform "StreamOne" is entirely fictional. No proprietary studio assets, confidential rejection reports, or copyrighted third-party media assets are used.
+
+## Contributing & Disclosure Rules
+
+Instructions for AI coding agents live in [`AGENTS.md`](AGENTS.md).
+
+Before committing code, arm the disclosure pre-commit hook (git does not propagate hooks automatically):
+
+```bash
+git config core.hooksPath .githooks
+./scripts/check-disclosure.sh --all
+```
+
+For full details on public documentation boundaries and secret management rules, see [`docs/DISCLOSURE.md`](docs/DISCLOSURE.md).
+
+## License
+
+This project is licensed under the MIT License — see [`LICENSE`](LICENSE).
