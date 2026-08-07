@@ -51,22 +51,16 @@ def map_severity_to_grafana(severity: str) -> str:
 def get_google_auth_credentials() -> Any:
     """
     Resolves Google Cloud Application Default Credentials (ADC).
-    Falls back to obtaining an access token from gcloud CLI if default credentials are not set.
-    Fails loudly with RuntimeError if credentials cannot be resolved.
+    Fails loudly with RuntimeError if Application Default Credentials cannot be resolved.
     """
     try:
         creds, _ = google.auth.default()
         return creds
-    except Exception:
-        try:
-            import subprocess
-            token = subprocess.check_output(["gcloud", "auth", "print-access-token"], text=True).strip()
-            return google.oauth2.credentials.Credentials(token)
-        except Exception as exc:
-            raise RuntimeError(
-                "Failed to resolve Google Cloud Application Default Credentials (ADC). "
-                "Please run 'gcloud auth application-default login' or set GOOGLE_APPLICATION_CREDENTIALS."
-            ) from exc
+    except Exception as exc:
+        raise RuntimeError(
+            "Failed to resolve Google Cloud Application Default Credentials (ADC).\n"
+            "Please run 'gcloud auth application-default login' or set GOOGLE_APPLICATION_CREDENTIALS."
+        ) from exc
 
 
 def validate_environment() -> Dict[str, str]:
