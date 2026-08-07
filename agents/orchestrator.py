@@ -11,7 +11,6 @@ import sys
 import json
 import logging
 import asyncio
-import subprocess
 from typing import Dict, Any, List
 
 # Ensure project root is on sys.path
@@ -51,15 +50,17 @@ def map_severity_to_grafana(severity: str) -> str:
 
 def get_google_auth_credentials() -> Any:
     """
-    Resolves Google Cloud credentials via standard ADC or fallback gcloud OAuth token.
+    Resolves Google Cloud Application Default Credentials (ADC).
+    Fails loudly with RuntimeError if credentials cannot be resolved.
     """
     try:
         creds, _ = google.auth.default()
         return creds
-    except Exception:
-        logger.info("ADC credentials file not found; fetching token via gcloud CLI...")
-        token = subprocess.check_output(["gcloud", "auth", "print-access-token"]).decode().strip()
-        return google.oauth2.credentials.Credentials(token)
+    except Exception as exc:
+        raise RuntimeError(
+            "Failed to resolve Google Cloud Application Default Credentials (ADC). "
+            "Please run 'gcloud auth application-default login' or set GOOGLE_APPLICATION_CREDENTIALS."
+        ) from exc
 
 
 def validate_environment() -> Dict[str, str]:
@@ -68,13 +69,13 @@ def validate_environment() -> Dict[str, str]:
     Fails loudly with RuntimeError if required variables are missing.
     Automatically sets GOOGLE_GENAI_USE_VERTEXAI and GOOGLE_CLOUD_PROJECT for the Google AI SDK.
     """
-    project_id = os.getenv("GOOGLE_CLOUD_PROJECT") or os.getenv("GCP_PROJECT_ID")
+    project_id = os.getenv("GOOGLE_CLOUD_PROJECT")
     location = os.getenv("GOOGLE_CLOUD_LOCATION", "us-central1")
     token = os.getenv("GRAFANA_SERVICE_ACCOUNT_TOKEN")
 
     missing = []
     if not project_id:
-        missing.append("GOOGLE_CLOUD_PROJECT (or GCP_PROJECT_ID)")
+        missing.append("GOOGLE_CLOUD_PROJECT")
     if not token or token == "glsa_REPLACE_ME":
         missing.append("GRAFANA_SERVICE_ACCOUNT_TOKEN")
 
@@ -148,7 +149,10 @@ async def run_adk_orchestration(
         url=mcp_url,
         headers={"Authorization": f"Bearer {token}"},
     )
-    mcp_toolset = McpToolset(connection_params=connection_params)
+    mcp_toolset = McpToolset(
+        connection_params=connection_params,
+        tool_filter=["create_incident"],
+    )
 
     try:
         master_id = report.get("master_id", "UNKNOWN")
