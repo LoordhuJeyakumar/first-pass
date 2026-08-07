@@ -155,10 +155,73 @@ def extract_text_and_tool_args_from_events(agent_events: List[Any]) -> str:
                 for call in calls:
                     if hasattr(call, "args") and call.args:
                         extracted_texts.append(json.dumps(call.args))
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.error(f"Failed to extract function calls from event: {exc}", exc_info=True)
+                raise
 
     return "\n".join(extracted_texts)
+
+
+def inspect_and_log_tool_calls(agent_events: List[Any]) -> List[Dict[str, Any]]:
+    """
+    Explicitly logs all tool calls captured in ADK agent_events:
+    tool name, invocation arguments, and returned responses/results.
+    Checks whether create_annotation was invoked and returned successfully.
+    """
+    tool_logs = []
+    for event in agent_events:
+        # Check function calls
+        calls = []
+        if hasattr(event, "get_function_calls"):
+            try:
+                calls = event.get_function_calls() or []
+            except Exception as exc:
+                logger.error(f"Error calling get_function_calls on event: {exc}", exc_info=True)
+                raise
+        elif hasattr(event, "content") and getattr(event.content, "parts", None):
+            for part in event.content.parts:
+                if hasattr(part, "function_call") and part.function_call:
+                    calls.append(part.function_call)
+
+        for call in calls:
+            name = getattr(call, "name", "unknown")
+            args = getattr(call, "args", {})
+            logger.info(f"[TOOL CALL] Invoked tool '{name}' with arguments: {json.dumps(args)}")
+            tool_logs.append({"type": "call", "name": name, "args": args})
+
+        # Check function responses
+        responses = []
+        if hasattr(event, "get_function_responses"):
+            try:
+                responses = event.get_function_responses() or []
+            except Exception as exc:
+                logger.error(f"Error calling get_function_responses on event: {exc}", exc_info=True)
+                raise
+        elif hasattr(event, "content") and getattr(event.content, "parts", None):
+            for part in event.content.parts:
+                if hasattr(part, "function_response") and part.function_response:
+                    responses.append(part.function_response)
+
+        for resp in responses:
+            name = getattr(resp, "name", "unknown")
+            response_val = getattr(resp, "response", {})
+            logger.info(f"[TOOL RESPONSE] Tool '{name}' returned: {json.dumps(response_val)}")
+            tool_logs.append({"type": "response", "name": name, "response": response_val})
+
+    # Audit create_annotation calls explicitly
+    annotation_calls = [t for t in tool_logs if t["type"] == "call" and t["name"] == "create_annotation"]
+    annotation_responses = [t for t in tool_logs if t["type"] == "response" and t["name"] == "create_annotation"]
+
+    if not annotation_calls:
+        logger.error("AUDIT WARNING: 'create_annotation' tool was NEVER invoked by the agent during execution!")
+    else:
+        logger.info(f"AUDIT OK: 'create_annotation' tool invoked {len(annotation_calls)} time(s).")
+        for resp in annotation_responses:
+            resp_data = resp.get("response", {})
+            if "error" in str(resp_data).lower() or "err" in str(resp_data).lower():
+                logger.error(f"AUDIT FAILURE: 'create_annotation' returned an error: {resp_data}")
+
+    return tool_logs
 
 
 def assert_ground_truth_preservation(agent_events: List[Any], findings: List[Dict[str, Any]]) -> None:
@@ -244,7 +307,7 @@ Instructions:
    - `roomPrefix`: "first-pass"
 3. Call `add_activity_to_incident` using the incident ID returned by `create_incident` (e.g. incidentID):
    - `incidentId`: the ID returned from create_incident
-   - `body`: Detail each blocker finding. For every blocker, include its clause_id, spec clause_text, measured value, and expected value verbatim.
+   - `body`: Detail each blocker finding. For every blocker, include its clause_id, spec clause_text, measured value, and expected value verbatim. Format requirement: put each blocker on its own separate line (or bullet point) with line breaks between blockers. Do NOT format multiple blockers into a single dense paragraph.
 4. Call `create_annotation` to create a timeline annotation:
    - `text`: Timeline annotation describing the delivery blocker for {master_id}, explicitly referencing the violated clause IDs ({', '.join(clause_ids)}) and brief summary.
 5. In your final response, explain the spec clause failures retaining the exact clause IDs, measured values, and expected values verbatim. Do not compute or alter any numeric or measured values.
@@ -279,11 +342,14 @@ Instructions:
             agent_events.append(event)
             logger.info(f"ADK Event received: {event}")
 
-        logger.info("ADK execution completed cleanly. Asserting ground truth preservation against model response and tool calls...")
+        logger.info("ADK execution completed. Inspecting and logging all tool calls captured in agent_events...")
+        tool_logs = inspect_and_log_tool_calls(agent_events)
+
+        logger.info("Asserting ground truth preservation against model response and tool calls...")
         assert_ground_truth_preservation(agent_events, findings)
 
         logger.info("Ground truth preservation verified successfully.")
-        return {"status": "ok", "events_count": len(agent_events)}
+        return {"status": "ok", "events_count": len(agent_events), "tool_logs": tool_logs}
 
     finally:
         logger.info("Closing McpToolset connection...")
