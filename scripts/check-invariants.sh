@@ -409,10 +409,15 @@ fi
 
 # Check 11: agents/check_engine.py line coverage floor
 echo "  [Check 11/11] Verifying agents/check_engine.py test coverage is at or above 90% floor..."
-if pytest --cov=agents.check_engine --cov-fail-under=90 tests/ > /dev/null 2>&1; then
+PYTHON_EXEC=".venv/bin/python"
+if "$PYTHON_EXEC" -m pytest --cov=agents.check_engine --cov-fail-under=90 tests/ > /dev/null 2>&1; then
   echo "  ✅ Check 11 passed: agents/check_engine.py line coverage >= 90% floor."
 else
-  echo "  ❌ ERROR Check 11 failed: agents/check_engine.py line coverage below floor."
+  if "$PYTHON_EXEC" -m pytest tests/ > /dev/null 2>&1; then
+    echo "  ❌ ERROR Check 11 failed: agents/check_engine.py line coverage is below the 90% floor."
+  else
+    echo "  ❌ ERROR Check 11 failed: pytest test suite execution failed."
+  fi
   ERRORS=$((ERRORS + 1))
 fi
 

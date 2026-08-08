@@ -317,3 +317,82 @@ def test_evaluate_master_clause_id_absent_from_spec_clauses_by_id():
     assert report["blocker_count"] == 0
     assert report["findings"] == []
 
+
+def test_evaluate_master_warning_severities_and_packaging_blocker():
+    """
+    Tests warning_count increments across audio, video, and timed_text clauses when
+    severity_on_fail is set to 'warning', and blocker_count for packaging when blocker.
+    Exercises lines 181, 203, 223, and 241 in agents/check_engine.py.
+    """
+    spec = {
+        "spec_id": "TEST-SPEC-WARNINGS",
+        "clauses": [
+            {
+                "clause_id": "A-WARN",
+                "domain": "audio",
+                "check": {"op": "within", "target": -27.0, "tolerance": 2.0},
+                "severity_on_fail": "warning",
+            },
+            {
+                "clause_id": "V-WARN",
+                "domain": "video",
+                "check": {"op": "equals", "target": "BT.2020"},
+                "severity_on_fail": "warning",
+            },
+            {
+                "clause_id": "T-WARN",
+                "domain": "timed_text",
+                "check": {"op": "language_coverage"},
+                "severity_on_fail": "warning",
+            },
+            {
+                "clause_id": "P-BLOCK",
+                "domain": "packaging",
+                "check": {"op": "equals", "target": True},
+                "severity_on_fail": "blocker",
+            },
+        ],
+    }
+    master = {
+        "master_id": "TEST-WARNINGS-MASTER",
+        "audio_tracks": [{"language": "ta-IN", "integrated_loudness_lufs": -19.0}],
+        "video": {"color_primaries": "Rec.709"},
+        "timed_text": [],
+        "packaging": {"naming_pattern_ok": False},
+    }
+
+    report = evaluate_master_against_spec(master, spec)
+    assert report["verdict"] == "REJECT"  # Packaging is blocker
+    assert report["blocker_count"] == 1
+    assert report["warning_count"] == 3
+
+
+def test_evaluate_master_india_mode_integration():
+    """
+    Tests India mode gating evaluation during evaluate_master_against_spec.
+    Exercises lines 250-255 in agents/check_engine.py.
+    """
+    spec = {
+        "spec_id": "TEST-SPEC-INDIA",
+        "clauses": [],
+        "india_mode": {"enabled": True},
+    }
+    master = {
+        "master_id": "TEST-INDIA-MASTER",
+        "audio_tracks": [
+            {"language": "ta-IN", "role": "original"},
+            {"language": "hi-IN", "role": "dub"},
+        ],
+        "certification": {
+            "ta-IN": "pending",
+            "hi-IN": "cleared",
+        },
+    }
+
+    report = evaluate_master_against_spec(master, spec)
+    assert report["india_mode"] is not None
+    assert report["india_mode"]["original_language"] == "ta-IN"
+    assert report["india_mode"]["original_status"] == "pending"
+    assert report["india_mode"]["dubs_blocked"] is True
+
+
