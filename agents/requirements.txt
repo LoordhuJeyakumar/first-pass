@@ -3,5 +3,6 @@
 
 pytest==9.1.1
 pytest-cov==7.1.0
-google-adk==2.6.2
+google-adk==2.6.3
+# Pinned from google-adk dependency for reproducibility
 mcp==1.29.0
