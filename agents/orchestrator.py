@@ -27,6 +27,7 @@ from google.adk.tools.mcp_tool.mcp_session_manager import StreamableHTTPConnecti
 from google.genai import types
 
 from agents.check_engine import evaluate_master_against_spec
+from agents.telemetry import validate_telemetry_environment, emit_qc_telemetry
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger("FirstPassOrchestrator")
@@ -78,9 +79,9 @@ def get_google_auth_credentials() -> Any:
         ) from exc
 
 
-def validate_environment() -> Dict[str, str]:
+def validate_environment() -> Dict[str, Any]:
     """
-    Validates required environment variables for Google Cloud AI and Grafana MCP auth.
+    Validates required environment variables for Google Cloud AI, Grafana MCP auth, and Telemetry.
     Fails loudly with RuntimeError if required variables are missing.
     Automatically sets GOOGLE_GENAI_USE_VERTEXAI and GOOGLE_CLOUD_PROJECT for the Google AI SDK.
     """
@@ -101,6 +102,9 @@ def validate_environment() -> Dict[str, str]:
             + "\nPlease configure your .env file or export them before running."
         )
 
+    # Validate Prometheus Remote-Write and Loki telemetry environment variables
+    telemetry_cfg = validate_telemetry_environment()
+
     # Ensure Google GenAI SDK receives standard Vertex AI configuration
     os.environ["GOOGLE_GENAI_USE_VERTEXAI"] = "true"
     os.environ["GOOGLE_CLOUD_PROJECT"] = project_id
@@ -111,7 +115,9 @@ def validate_environment() -> Dict[str, str]:
         "location": location,
         "token": token,
         "mcp_url": os.getenv("MCP_SERVER_URL", "http://localhost:8000/mcp"),
+        "telemetry_cfg": telemetry_cfg,
     }
+
 
 
 def load_json_file(file_path: str) -> Dict[str, Any]:
@@ -387,7 +393,12 @@ def run_delivery_qc(master_path: str, spec_path: str) -> Dict[str, Any]:
     logger.info("Executing deterministic QC check engine...")
     report = evaluate_master_against_spec(master, spec)
 
+    logger.info("Emitting QC telemetry to Grafana Cloud (Prometheus remote-write & Loki push)...")
+    telemetry_res = emit_qc_telemetry(report, env_cfg=env_cfg.get("telemetry_cfg"))
+    report["telemetry_result"] = telemetry_res
+
     logger.info(f"QC Run Finished. Verdict: {report['verdict']} (Blockers: {report['blocker_count']})")
+
 
     if report["verdict"] == "REJECT":
         logger.info("Delivery blockers detected. Triggering Google ADK Orchestrator workflow...")

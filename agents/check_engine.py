@@ -130,6 +130,7 @@ def evaluate_master_against_spec(master: Dict[str, Any], spec: Dict[str, Any]) -
     Returns structured finding objects and an overall delivery verdict (PASS / REJECT).
     """
     findings = []
+    evaluations = []
     blocker_count = 0
     warning_count = 0
 
@@ -163,6 +164,17 @@ def evaluate_master_against_spec(master: Dict[str, Any], spec: Dict[str, Any]) -
                 loudness = track.get("integrated_loudness_lufs")
                 if loudness is not None:
                     res = evaluate_audio_loudness(loudness, target=target, tolerance=tolerance)
+                    diff = loudness - target
+                    evaluations.append({
+                        "clause_id": clause_id,
+                        "domain": domain,
+                        "passed": res["passed"],
+                        "result": "pass" if res["passed"] else "fail",
+                        "language": lang,
+                        "loudness_lufs": loudness,
+                        "target_lufs": target,
+                        "loudness_deviation_lufs": round(diff, 1),
+                    })
                     if not res["passed"]:
                         finding = {
                             "clause_id": clause_id,
@@ -186,6 +198,12 @@ def evaluate_master_against_spec(master: Dict[str, Any], spec: Dict[str, Any]) -
             primaries = video.get("color_primaries")
             if primaries:
                 res = evaluate_video_color_primaries(primaries, target=target)
+                evaluations.append({
+                    "clause_id": clause_id,
+                    "domain": domain,
+                    "passed": res["passed"],
+                    "result": "pass" if res["passed"] else "fail",
+                })
                 if not res["passed"]:
                     finding = {
                         "clause_id": clause_id,
@@ -205,6 +223,12 @@ def evaluate_master_against_spec(master: Dict[str, Any], spec: Dict[str, Any]) -
         # Timed Text Language Coverage
         elif domain == "timed_text" and check.get("op") == "language_coverage":
             res = evaluate_timed_text_coverage(sub_langs, audio_langs)
+            evaluations.append({
+                "clause_id": clause_id,
+                "domain": domain,
+                "passed": res["passed"],
+                "result": "pass" if res["passed"] else "fail",
+            })
             if not res["passed"]:
                 finding = {
                     "clause_id": clause_id,
@@ -226,6 +250,12 @@ def evaluate_master_against_spec(master: Dict[str, Any], spec: Dict[str, Any]) -
         elif domain == "packaging" and check.get("op") == "equals":
             pattern_ok = packaging.get("naming_pattern_ok", True)
             res = evaluate_packaging_naming(pattern_ok)
+            evaluations.append({
+                "clause_id": clause_id,
+                "domain": domain,
+                "passed": res["passed"],
+                "result": "pass" if res["passed"] else "fail",
+            })
             if not res["passed"]:
                 finding = {
                     "clause_id": clause_id,
@@ -263,5 +293,7 @@ def evaluate_master_against_spec(master: Dict[str, Any], spec: Dict[str, Any]) -
         "blocker_count": blocker_count,
         "warning_count": warning_count,
         "findings": findings,
+        "evaluations": evaluations,
         "india_mode": india_report,
     }
+

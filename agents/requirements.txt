@@ -6,3 +6,5 @@ pytest-cov==7.1.0
 google-adk==2.6.3
 # Pinned from google-adk dependency for reproducibility
 mcp==1.29.0
+prometheus-remote-writer==1.1.3
+
