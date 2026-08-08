@@ -1,6 +1,6 @@
 services:
   mcp-grafana:
-    image: grafana/mcp-grafana:0.17.2
+    image: grafana/mcp-grafana:1.0.0
     container_name: mcp-grafana
     restart: unless-stopped
     ports:
