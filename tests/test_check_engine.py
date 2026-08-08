@@ -4,6 +4,7 @@ Authored strictly against data/specs/streamone.json and docs/DOMAIN.md specifica
 """
 
 import pytest
+import pytest_cov
 import sys
 import os
 

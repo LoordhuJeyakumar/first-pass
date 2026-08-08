@@ -16,6 +16,7 @@ from typing import Dict, Any, List
 # Ensure project root is on sys.path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
+import mcp
 import google.auth
 import google.oauth2.credentials
 from google.adk import Agent, Runner

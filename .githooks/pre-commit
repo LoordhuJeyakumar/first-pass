@@ -2,3 +2,4 @@
 set -euo pipefail
 
 ./scripts/check-disclosure.sh
+./scripts/check-invariants.sh
