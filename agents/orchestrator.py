@@ -52,12 +52,26 @@ def map_severity_to_grafana(severity: str) -> str:
 def get_google_auth_credentials() -> Any:
     """
     Resolves Google Cloud Application Default Credentials (ADC).
-    Fails loudly with RuntimeError if Application Default Credentials cannot be resolved.
+    If ADC file is missing, falls back to GOOGLE_OAUTH_ACCESS_TOKEN or gcloud access token.
+    Fails loudly with RuntimeError if credentials cannot be resolved.
     """
     try:
         creds, _ = google.auth.default()
         return creds
     except Exception as exc:
+        token = os.getenv("GOOGLE_OAUTH_ACCESS_TOKEN")
+        if not token:
+            try:
+                import subprocess
+                token = subprocess.check_output(
+                    ["gcloud", "auth", "print-access-token"], text=True
+                ).strip()
+            except Exception:
+                token = None
+
+        if token:
+            return google.oauth2.credentials.Credentials(token)
+
         raise RuntimeError(
             "Failed to resolve Google Cloud Application Default Credentials (ADC).\n"
             "Please run 'gcloud auth application-default login' or set GOOGLE_APPLICATION_CREDENTIALS."
@@ -213,7 +227,14 @@ def inspect_and_log_tool_calls(agent_events: List[Any]) -> List[Dict[str, Any]]:
         logger.info(f"AUDIT OK: 'create_annotation' tool invoked {len(annotation_calls)} time(s).")
         for resp in annotation_responses:
             resp_data = resp.get("response", {})
-            if "error" in str(resp_data).lower() or "err" in str(resp_data).lower():
+            is_err = False
+            if isinstance(resp_data, dict):
+                if resp_data.get("isError") or "error" in resp_data:
+                    is_err = True
+            elif "error" in str(resp_data).lower() and "message" not in str(resp_data).lower():
+                is_err = True
+
+            if is_err:
                 logger.error(f"AUDIT FAILURE: 'create_annotation' returned an error: {resp_data}")
 
     return tool_logs
