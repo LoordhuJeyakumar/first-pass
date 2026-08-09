@@ -10,4 +10,4 @@ services:
       - ../.env
 
     entrypoint: ["/app/mcp-grafana", "--transport", "streamable-http", "--address", "0.0.0.0:8000"]
-    command: ["--enabled-tools", "incident,dashboard,alerting,annotations,search,query,folder"]
+    command: ["--enabled-tools", "incident,dashboard,alerting,annotations,search,query,folder,datasource"]
