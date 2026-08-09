@@ -319,7 +319,6 @@ async def run_adk_orchestration(
             "create_incident",
             "add_activity_to_incident",
             "create_annotation",
-            "create_folder",
             "update_dashboard",
         ],
     )
@@ -387,7 +386,8 @@ async def run_adk_orchestration(
                     "targets": [
                         {
                             "datasource": {"type": "prometheus", "uid": "grafanacloud-prom"},
-                            "expr": "qc_checks",
+                            "expr": "last_over_time(qc_checks[1h])",
+                            "instant": True,
                             "legendFormat": "{{domain}} · {{result}}",
                             "refId": "A",
                         }
@@ -403,7 +403,8 @@ async def run_adk_orchestration(
                     "targets": [
                         {
                             "datasource": {"type": "prometheus", "uid": "grafanacloud-prom"},
-                            "expr": "qc_loudness_deviation_lufs",
+                            "expr": "last_over_time(qc_loudness_deviation_lufs[1h])",
+                            "instant": True,
                             "legendFormat": "{{language}}",
                             "refId": "A",
                         }
@@ -411,6 +412,7 @@ async def run_adk_orchestration(
                     "fieldConfig": {
                         "defaults": {
                             "unit": "LUFS",
+                            "decimals": 1,
                             "thresholds": {
                                 "mode": "absolute",
                                 "steps": [
@@ -419,7 +421,15 @@ async def run_adk_orchestration(
                                     {"color": "red", "value": 2.001},
                                 ],
                             },
-                        }
+                        },
+                        "overrides": [
+                            {
+                                "matcher": {"id": "byName", "options": "ta-IN"},
+                                "properties": [
+                                    {"id": "prefix", "value": "+"}
+                                ],
+                            }
+                        ],
                     },
                 },
                 {
@@ -443,7 +453,6 @@ async def run_adk_orchestration(
                             "id": "organize",
                             "options": {
                                 "excludeByName": {
-                                    "Time": True,
                                     "Line": True,
                                     "tsNs": True,
                                     "id": True,
@@ -452,14 +461,16 @@ async def run_adk_orchestration(
                                     "run_id": True,
                                 },
                                 "indexByName": {
-                                    "clause_id": 0,
-                                    "severity": 1,
-                                    "measured": 2,
-                                    "expected": 3,
-                                    "language": 4,
-                                    "message": 5,
+                                    "Time": 0,
+                                    "clause_id": 1,
+                                    "severity": 2,
+                                    "measured": 3,
+                                    "expected": 4,
+                                    "language": 5,
+                                    "message": 6,
                                 },
                                 "renameByName": {
+                                    "Time": "Time",
                                     "clause_id": "Clause",
                                     "severity": "Severity",
                                     "measured": "Measured",
@@ -469,12 +480,24 @@ async def run_adk_orchestration(
                                 },
                             },
                         },
+                        {
+                            "id": "sortBy",
+                            "options": {
+                                "fields": {},
+                                "sort": [
+                                    {
+                                        "field": "Time",
+                                        "desc": True,
+                                    }
+                                ],
+                            },
+                        },
                     ],
                 },
             ],
         }
 
-        dashboard_json_str = json.dumps(dashboard_template)
+        dashboard_json = json.dumps(dashboard_template)
 
         # Ground truth findings lines for prompt
         findings_bullets = "\n".join(
@@ -489,24 +512,20 @@ Ground Truth Findings:
 {findings_bullets}
 
 Please execute the following tool calls in order:
-1. Call `create_folder` tool with:
-- uid: "first-pass-qc"
-- title: "First Pass QC"
-(Note: If `create_folder` returns an error such as status 412 indicating the folder already exists, ignore the error and proceed immediately to step 2.)
 
-2. Call `update_dashboard` tool with:
-- folderUid: "first-pass-qc"
-- overwrite: true
-- message: "Update Delivery Readiness dashboard for master {master_id}"
-- dashboard: {dashboard_json_str}
+1. Call `update_dashboard` tool with arguments:
+   - folderUid: "first-pass-qc"
+   - overwrite: true
+   - message: "Update Delivery Readiness dashboard for master {master_id}"
+   - dashboard: {dashboard_json}
 
-3. If blocker_count > 0 ({blocker_count} blockers present):
-- Call `create_incident` tool with title "Delivery Blocker: {master_id} ({blocker_count} Spec Non-Conformances)", severity "{mapped_severity}", roomPrefix "first-pass".
-- Call `add_activity_to_incident` tool using the returned incidentID with findings details verbatim.
-- Call `create_annotation` tool with text summarizing violated clauses ({', '.join(clause_ids)}).
-If blocker_count == 0, do NOT call create_incident, add_activity_to_incident, or create_annotation.
+2. If blocker_count > 0 ({blocker_count} blockers present):
+   a. Call `create_incident` tool with title "Delivery Blocker: {master_id} ({blocker_count} Spec Non-Conformances)", severity "{mapped_severity}", roomPrefix "first-pass".
+   b. Call `add_activity_to_incident` tool using the returned incidentID with findings details verbatim.
+   c. Call `create_annotation` tool with text summarizing violated clauses ({', '.join(clause_ids)}).
+   If blocker_count == 0, do NOT call create_incident, add_activity_to_incident, or create_annotation.
 
-4. In your final response, summarize the actions taken, retaining exact clause IDs ({', '.join(clause_ids)}), metric names, measured values, and expected values verbatim.
+3. In your final response, summarize the actions taken, retaining exact clause IDs ({', '.join(clause_ids)}), metric names, measured values, and expected values verbatim.
 """
 
         logger.info("Initializing Google ADK Gemini model & LlmAgent (model: gemini-2.5-flash)...")
