@@ -67,8 +67,8 @@ def valid_telemetry_env():
 # -----------------------------------------------------------------------------
 
 def test_validate_metric_labels_valid_sets():
-    # Valid qc_check_total
-    validate_metric_labels("qc_check_total", {"__name__": "qc_check_total", "domain": "audio", "result": "pass"})
+    # Valid qc_checks
+    validate_metric_labels("qc_checks", {"__name__": "qc_checks", "domain": "audio", "result": "pass"})
     # Valid qc_loudness_deviation_lufs
     validate_metric_labels("qc_loudness_deviation_lufs", {"__name__": "qc_loudness_deviation_lufs", "language": "ta-IN"})
     # Valid qc_blockers_current
@@ -86,13 +86,13 @@ def test_validate_metric_labels_rejects_high_cardinality_run_id():
     Asserts that adding run_id to ANY metric label set causes an immediate ValueError.
     """
     labels_with_run_id = {
-        "__name__": "qc_check_total",
+        "__name__": "qc_checks",
         "domain": "audio",
         "result": "pass",
         "run_id": "run-12345-abc",  # High cardinality violation!
     }
     with pytest.raises(ValueError, match="invalid label keys"):
-        validate_metric_labels("qc_check_total", labels_with_run_id)
+        validate_metric_labels("qc_checks", labels_with_run_id)
 
 
 def test_validate_metric_labels_rejects_extra_master_id_label():
@@ -106,12 +106,12 @@ def test_validate_metric_labels_rejects_extra_master_id_label():
 
 def test_validate_metric_labels_rejects_missing_required_label():
     labels_missing_result = {
-        "__name__": "qc_check_total",
+        "__name__": "qc_checks",
         "domain": "audio",
         # missing "result"
     }
     with pytest.raises(ValueError, match="invalid label keys"):
-        validate_metric_labels("qc_check_total", labels_missing_result)
+        validate_metric_labels("qc_checks", labels_missing_result)
 
 
 # -----------------------------------------------------------------------------
@@ -221,6 +221,20 @@ def test_build_loki_log_payload_master_clean_has_empty_log_lines(master_clean, s
 
     payload = build_loki_log_payload(report, run_id=run_id)
     assert payload["streams"][0]["values"] == []
+
+
+def test_build_loki_log_payload_timestamps_unique_and_monotonic(master_blockers, streamone_spec):
+    report = evaluate_master_against_spec(master_blockers, streamone_spec)
+    run_id = "run-TEST-TIMESTAMPS-UNIQUE"
+    ts_ns = 1700000000000000000
+
+    payload = build_loki_log_payload(report, run_id=run_id, timestamp_ns=ts_ns)
+    values = payload["streams"][0]["values"]
+    assert len(values) > 1, "Test requires multiple findings to verify timestamp uniqueness across lines"
+
+    timestamps = [int(v[0]) for v in values]
+    assert len(timestamps) == len(set(timestamps)), "All timestamps in Loki log payload must be unique"
+    assert all(timestamps[i] < timestamps[i + 1] for i in range(len(timestamps) - 1)), "Timestamps must be monotonically increasing"
 
 
 # -----------------------------------------------------------------------------

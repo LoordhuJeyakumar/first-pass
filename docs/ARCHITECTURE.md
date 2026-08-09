@@ -101,7 +101,7 @@ All measurement comparisons (e.g., verifying integrated loudness of −24.0 LUFS
 ## Telemetry & Cardinality Design
 
 - **Metrics (Prometheus)**: Fixed label sets with low cardinality:
-  - `qc_check_total{domain, result}`
+  - `qc_checks{domain, result}`
   - `qc_loudness_deviation_lufs{language}`
   - `qc_blockers_current`
   - `qc_readiness_ratio{language}`

@@ -17,7 +17,7 @@ logger = logging.getLogger("FirstPassTelemetry")
 
 # Strictly enforced low-cardinality metric label sets to protect the 10,000-series cap.
 ALLOWED_LABEL_SETS = {
-    "qc_check_total": {"__name__", "domain", "result"},
+    "qc_checks": {"__name__", "domain", "result"},
     "qc_loudness_deviation_lufs": {"__name__", "language"},
     "qc_blockers_current": {"__name__"},
 }
@@ -105,13 +105,13 @@ def build_prometheus_metrics(report: Dict[str, Any], timestamp_ms: Optional[int]
         domain = str(ev.get("domain", "unknown"))
         result = str(ev.get("result", "pass"))
 
-        # 2. qc_check_total{domain, result}
+        # 2. qc_checks{domain, result}
         check_labels = {
-            "__name__": "qc_check_total",
+            "__name__": "qc_checks",
             "domain": domain,
             "result": result,
         }
-        validate_metric_labels("qc_check_total", check_labels)
+        validate_metric_labels("qc_checks", check_labels)
         metrics.append({
             "metric": check_labels,
             "values": [1.0],
@@ -142,14 +142,15 @@ def build_loki_log_payload(
     """
     Constructs structured Loki log push payload containing one JSON log line per finding.
     run_id is included inside the JSON log payload ONLY, never as a Prometheus metric label.
+    Monotonically increments nanosecond timestamps for each finding to prevent Loki line drops.
     """
     ts_ns = timestamp_ns if timestamp_ns is not None else int(time.time() * 1e9)
-    ts_ns_str = str(ts_ns)
 
     log_values = []
     findings = report.get("findings", [])
 
-    for finding in findings:
+    for i, finding in enumerate(findings):
+        entry_ts_str = str(ts_ns + i)
         line_dict = {
             "run_id": run_id,
             "clause_id": str(finding.get("clause_id", "")),
@@ -160,7 +161,7 @@ def build_loki_log_payload(
             "message": str(finding.get("message", "")),
         }
         line_str = json.dumps(line_dict, separators=(",", ":"))
-        log_values.append([ts_ns_str, line_str])
+        log_values.append([entry_ts_str, line_str])
 
     return {
         "streams": [
