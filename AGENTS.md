@@ -13,7 +13,8 @@
 5. **Deterministic Check Engine.** The LLM orchestrates, interprets specs, and explains findings, but **never computes measurements**. Audio loudness, True Peak, HDR metadata, subtitle coverage, and packaging checks must be computed by pure, deterministic Python code.
 6. **Telemetry & Series Cap.** Prometheus metrics use fixed, low-cardinality label sets (`qc_check_total{domain,result}`, `qc_loudness_deviation_lufs{language}`, `qc_blockers_current`, `qc_readiness_ratio{language}`). Unique run IDs belong in Loki log payloads, never in Prometheus metric labels.
 7. **AI Orchestration Package Denylist.** The following packages are explicitly prohibited in runtime code — they duplicate what `google-adk` already provides and would introduce non-Google AI dependencies: `langchain`, `langgraph`, `crewai`, `autogen`, `llama-index`, `openai`, `anthropic`, `semantic-kernel`, `haystack`. Non-AI third-party packages (`fastapi`, `requests`, `jinja2`, etc.) are unrestricted.
-8. **Commit Convention.** Every commit must follow Conventional Commits 1.0.0 (see below). The commit body must record what was **Verified**, not only what changed — this is the audit trail for Definition of Done point 3.
+8. **No API Guessing — Read Authoritative Docs & Installed Source.** Never guess API signatures, parameter names, return dataclass attributes, or severity vocabularies for any library or SDK (Google ADK, Grafana MCP, Prometheus Remote-Write, Loki, etc.). Read official documentation (e.g. `https://grafana.com/docs/`, `https://google.github.io/adk-docs/`) or inspect the authoritative installed package source code under `.venv/` on disk first.
+9. **Commit Convention.** Every commit must follow Conventional Commits 1.0.0 (see below). The commit body must record what was **Verified**, not only what changed — this is the audit trail for Definition of Done point 3.
 
 ## Repository Structure
 
@@ -47,7 +48,7 @@ Format: `<type>(<scope>): <description>`
 
 **Breaking changes:** append `!` before the colon (`feat(agents)!: ...`) or add a `BREAKING CHANGE:` footer.
 
-**Body — Verified section (required when Definition of Done point 3 applies):** the body must include a `Verified:` line recording the observable outcome you personally saw, not an inference from logs.
+**Body — Verified section (required when Definition of Done point 3 applies):** the body must include a `Verified:` line recording the observable outcome you personally saw, not an inference from logs. Use explicit `#NNN` / `N tests` placeholders in example templates, or exact real observed figures in actual commits.
 
 ```
 feat(agents): add observability-actuator MCP write calls
@@ -55,8 +56,8 @@ feat(agents): add observability-actuator MCP write calls
 Implement create_incident, create_annotation, and alerting_manage_rules
 calls triggered when the check engine returns blocker findings.
 
-Verified: incident #1412 visible in the Grafana Cloud stack with title
-"Delivery Blocker: STRM-2026-0142-BLOCKERS (2 non-conformances)",
+Verified: incident #NNN visible in the Grafana Cloud stack with title
+"Delivery Blocker: STRM-2026-0142 (N Spec Non-Conformances)",
 annotated with clause A-2.1 (+3.0 LUFS deviation, ta-IN track).
-14 tests pass in .venv; ./scripts/check-disclosure.sh --all clean.
+N tests pass in .venv; ./scripts/check-disclosure.sh --all clean.
 ```
