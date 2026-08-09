@@ -229,25 +229,57 @@ def test_build_loki_log_payload_master_clean_has_empty_log_lines(master_clean, s
 
 @patch("agents.telemetry.RemoteWriter")
 def test_send_prometheus_metrics_success(mock_writer_cls, valid_telemetry_env):
+    from prometheus_remote_writer import SendResult
+    mock_response = MagicMock()
+    mock_response.status_code = 200
+
     mock_writer = MagicMock()
-    mock_writer.send.return_value = MagicMock(success=True)
+    mock_writer.send.return_value = SendResult(
+        requests_sent=1, series_sent=1, samples_sent=1, last_response=mock_response
+    )
     mock_writer_cls.return_value = mock_writer
 
     metrics = [{"metric": {"__name__": "qc_blockers_current"}, "values": [0.0], "timestamps": [123]}]
-    send_prometheus_metrics(metrics, valid_telemetry_env)
+    res = send_prometheus_metrics(metrics, valid_telemetry_env)
 
+    assert res.series_sent == 1
     mock_writer.send.assert_called_once_with(metrics)
     mock_writer.close.assert_called_once()
 
 
 @patch("agents.telemetry.RemoteWriter")
-def test_send_prometheus_metrics_failure_raises(mock_writer_cls, valid_telemetry_env):
+def test_send_prometheus_metrics_empty_metrics(mock_writer_cls, valid_telemetry_env):
+    from prometheus_remote_writer import SendResult
+
     mock_writer = MagicMock()
-    mock_writer.send.return_value = MagicMock(success=False, error="401 Unauthorized")
+    mock_writer.send.return_value = SendResult(
+        requests_sent=0, series_sent=0, samples_sent=0, last_response=None
+    )
+    mock_writer_cls.return_value = mock_writer
+
+    metrics = []
+    res = send_prometheus_metrics(metrics, valid_telemetry_env)
+
+    assert res.series_sent == 0
+    assert res.last_response is None
+    mock_writer.close.assert_called_once()
+
+
+@patch("agents.telemetry.RemoteWriter")
+def test_send_prometheus_metrics_zero_series_sent_raises(mock_writer_cls, valid_telemetry_env):
+    from prometheus_remote_writer import SendResult
+    mock_response = MagicMock()
+    mock_response.status_code = 200
+
+    mock_writer = MagicMock()
+    # Metrics non-empty but series_sent = 0
+    mock_writer.send.return_value = SendResult(
+        requests_sent=1, series_sent=0, samples_sent=0, last_response=mock_response
+    )
     mock_writer_cls.return_value = mock_writer
 
     metrics = [{"metric": {"__name__": "qc_blockers_current"}, "values": [0.0], "timestamps": [123]}]
-    with pytest.raises(RuntimeError, match="Prometheus remote-write request failed"):
+    with pytest.raises(RuntimeError, match="completed but 0 series were sent"):
         send_prometheus_metrics(metrics, valid_telemetry_env)
 
 
@@ -290,3 +322,41 @@ def test_emit_qc_telemetry_full_flow(
 
     mock_send_prom.assert_called_once()
     mock_send_loki.assert_called_once()
+
+
+@patch("agents.telemetry.send_prometheus_metrics")
+@patch("agents.telemetry.send_loki_logs")
+def test_emit_qc_telemetry_auto_generated_run_id(
+    mock_send_loki, mock_send_prom, master_blockers, streamone_spec, valid_telemetry_env
+):
+    report = evaluate_master_against_spec(master_blockers, streamone_spec)
+
+    # Do not pass run_id -> exercises if not run_id auto-generation branch
+    result = emit_qc_telemetry(report, env_cfg=valid_telemetry_env, run_id=None)
+
+    assert result["status"] == "ok"
+    assert result["run_id"].startswith("run-STRM-2026-0142-")
+    assert result["metrics_count"] > 0
+    assert result["logs_count"] == 2
+
+
+@patch("agents.telemetry.send_prometheus_metrics")
+@patch("agents.telemetry.send_loki_logs")
+def test_emit_qc_telemetry_auto_env_cfg(
+    mock_send_loki, mock_send_prom, master_blockers, streamone_spec, monkeypatch
+):
+    monkeypatch.setenv("PROM_REMOTE_WRITE_URL", "https://prometheus-prod-01.grafana.net/api/v1/push")
+    monkeypatch.setenv("PROM_USERNAME", "123456")
+    monkeypatch.setenv("LOKI_PUSH_URL", "https://logs-prod-01.grafana.net/loki/api/v1/push")
+    monkeypatch.setenv("LOKI_USERNAME", "654321")
+    monkeypatch.setenv("GRAFANA_CLOUD_API_KEY", "glsa_TEST_TOKEN")
+
+    report = evaluate_master_against_spec(master_blockers, streamone_spec)
+
+    # env_cfg=None -> exercises validate_telemetry_environment() call on line 238
+    result = emit_qc_telemetry(report, env_cfg=None, run_id="run-AUTO-ENV")
+
+    assert result["status"] == "ok"
+    assert result["run_id"] == "run-AUTO-ENV"
+
+

@@ -407,21 +407,108 @@ else
   ERRORS=$((ERRORS + 1))
 fi
 
-# Check 11: agents/check_engine.py line coverage floor
-echo "  [Check 11/11] Verifying agents/check_engine.py test coverage is at 100% floor..."
+# Check 11: agents/check_engine.py and agents/telemetry.py line coverage floor
+echo "  [Check 11/13] Verifying agents/check_engine.py and agents/telemetry.py test coverage is at 100% floor..."
 PYTHON_EXEC=".venv/bin/python"
 
 if ! "$PYTHON_EXEC" -c "import pytest_cov" > /dev/null 2>&1; then
   echo "  ❌ ERROR Check 11 failed: pytest-cov package is missing from environment $PYTHON_EXEC."
   ERRORS=$((ERRORS + 1))
-elif "$PYTHON_EXEC" -m pytest --cov=agents.check_engine --cov-fail-under=100 tests/ > /dev/null 2>&1; then
-  echo "  ✅ Check 11 passed: agents/check_engine.py line coverage >= 100% floor."
+elif "$PYTHON_EXEC" -m pytest --cov=agents.check_engine --cov=agents.telemetry --cov-fail-under=100 tests/ > /dev/null 2>&1; then
+  echo "  ✅ Check 11 passed: agents/check_engine.py & agents/telemetry.py line coverage >= 100% floor."
 else
   if "$PYTHON_EXEC" -m pytest tests/ > /dev/null 2>&1; then
-    echo "  ❌ ERROR Check 11 failed: agents/check_engine.py line coverage is below the 100% floor."
+    echo "  ❌ ERROR Check 11 failed: agents/check_engine.py & agents/telemetry.py line coverage is below the 100% floor."
   else
     echo "  ❌ ERROR Check 11 failed: pytest test suite execution failed."
   fi
+  ERRORS=$((ERRORS + 1))
+fi
+
+# Check 12: Verifying no subprocess module usage in agents/orchestrator.py
+echo "  [Check 12/13] Verifying no subprocess module usage in agents/orchestrator.py..."
+C12_OUT=$(python3 -c '
+import ast, sys
+target = "agents/orchestrator.py"
+with open(target, "r", encoding="utf-8") as f:
+    tree = ast.parse(f.read(), filename=target)
+for node in ast.walk(tree):
+    if isinstance(node, ast.Import):
+        for alias in node.names:
+            if alias.name == "subprocess":
+                print("SUBPROCESS_IMPORTED")
+                sys.exit(1)
+    elif isinstance(node, ast.ImportFrom):
+        if node.module == "subprocess":
+            print("SUBPROCESS_IMPORTED")
+            sys.exit(1)
+print("OK")
+' 2>&1 || true)
+
+if [[ "$C12_OUT" == "OK" ]]; then
+  echo "  ✅ Check 12 passed: No subprocess module usage in agents/orchestrator.py."
+else
+  echo "  ❌ ERROR Check 12 failed: Found subprocess usage in agents/orchestrator.py: $C12_OUT"
+  ERRORS=$((ERRORS + 1))
+fi
+
+# Check 13: Every variable declared in .env.example is read somewhere in the codebase or docker configs
+echo "  [Check 13/13] Verifying all .env.example variables are read in codebase or docker configs..."
+C13_OUT=$(python3 -c '
+import glob, re, os, sys
+
+env_example = ".env.example"
+if not os.path.exists(env_example):
+    print("MISSING_ENV_EXAMPLE")
+    sys.exit(1)
+
+with open(env_example, "r", encoding="utf-8") as f:
+    example_content = f.read()
+
+example_keys = set(re.findall(r"^\s*([A-Z0-9_]+)=", example_content, re.MULTILINE))
+
+code_files = glob.glob("**/*.py", recursive=True) + \
+             glob.glob("**/docker-compose*.yml", recursive=True) + \
+             glob.glob("**/docker-compose*.yaml", recursive=True) + \
+             glob.glob("**/Dockerfile*", recursive=True) + \
+             glob.glob("**/*.sh", recursive=True)
+
+all_content = ""
+for cf in code_files:
+    if ".venv" in cf or "__pycache__" in cf or ".env.example" in cf:
+        continue
+    try:
+        with open(cf, "r", encoding="utf-8") as f:
+            all_content += "\n" + f.read()
+    except Exception:
+        pass
+
+unread = []
+for key in sorted(list(example_keys)):
+    patterns = [
+        r"[\"\x27]" + re.escape(key) + r"[\"\x27]",
+        r"\$\{?" + re.escape(key) + r"\}?",
+        r"\b" + re.escape(key) + r"\b"
+    ]
+    found = False
+    for pat in patterns:
+        if re.search(pat, all_content):
+            found = True
+            break
+    if not found:
+        unread.append(key)
+
+if unread:
+    print("UNREAD_VARS:" + ",".join(unread))
+    sys.exit(1)
+else:
+    print("OK")
+' 2>&1 || true)
+
+if [[ "$C13_OUT" == "OK" ]]; then
+  echo "  ✅ Check 13 passed: All .env.example variables are read in codebase or docker configs."
+else
+  echo "  ❌ ERROR Check 13 failed: .env.example variable not read anywhere: $C13_OUT"
   ERRORS=$((ERRORS + 1))
 fi
 
@@ -432,3 +519,4 @@ else
   echo "❌ Invariant audit failed with $ERRORS error(s)."
   exit 1
 fi
+

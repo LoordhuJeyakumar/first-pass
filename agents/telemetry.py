@@ -175,10 +175,10 @@ def build_loki_log_payload(
     }
 
 
-def send_prometheus_metrics(metrics: List[MetricItem], env_cfg: Dict[str, str]) -> None:
+def send_prometheus_metrics(metrics: List[MetricItem], env_cfg: Dict[str, str]):
     """
     Sends metric items to Grafana Cloud via Prometheus Remote-Write.
-    Fails loudly with RuntimeError if remote-write operation encounters an error.
+    Fails loudly with RuntimeError if remote-write operation encounters an error or fails to send series.
     """
     writer = RemoteWriter(
         url=env_cfg["prom_remote_write_url"],
@@ -189,11 +189,21 @@ def send_prometheus_metrics(metrics: List[MetricItem], env_cfg: Dict[str, str]) 
     )
     try:
         result = writer.send(metrics)
-        if not result.success:
-            raise RuntimeError(f"Prometheus remote-write request failed: {result.error}")
-        logger.info(f"Prometheus remote-write succeeded ({len(metrics)} series sent).")
+        if metrics and result.series_sent == 0:
+            raise RuntimeError("Prometheus remote-write completed but 0 series were sent.")
+
+        status_info = (
+            f"HTTP status {result.last_response.status_code}"
+            if result.last_response is not None
+            else "no requests sent"
+        )
+        logger.info(
+            f"Prometheus remote-write succeeded ({result.series_sent} series sent, {status_info})."
+        )
+        return result
     finally:
         writer.close()
+
 
 
 def send_loki_logs(payload: Dict[str, Any], env_cfg: Dict[str, str]) -> None:

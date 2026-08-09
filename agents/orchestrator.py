@@ -18,7 +18,6 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")
 
 import mcp
 import google.auth
-import google.oauth2.credentials
 from google.adk import Agent, Runner
 from google.adk.models.google_llm import Gemini
 from google.adk.sessions import InMemorySessionService
@@ -53,26 +52,12 @@ def map_severity_to_grafana(severity: str) -> str:
 def get_google_auth_credentials() -> Any:
     """
     Resolves Google Cloud Application Default Credentials (ADC).
-    If ADC file is missing, falls back to GOOGLE_OAUTH_ACCESS_TOKEN or gcloud access token.
-    Fails loudly with RuntimeError if credentials cannot be resolved.
+    Fails loudly with RuntimeError if ADC credentials cannot be resolved.
     """
     try:
         creds, _ = google.auth.default()
         return creds
     except Exception as exc:
-        token = os.getenv("GOOGLE_OAUTH_ACCESS_TOKEN")
-        if not token:
-            try:
-                import subprocess
-                token = subprocess.check_output(
-                    ["gcloud", "auth", "print-access-token"], text=True
-                ).strip()
-            except Exception:
-                token = None
-
-        if token:
-            return google.oauth2.credentials.Credentials(token)
-
         raise RuntimeError(
             "Failed to resolve Google Cloud Application Default Credentials (ADC).\n"
             "Please run 'gcloud auth application-default login' or set GOOGLE_APPLICATION_CREDENTIALS."
@@ -106,7 +91,8 @@ def validate_environment() -> Dict[str, Any]:
     telemetry_cfg = validate_telemetry_environment()
 
     # Ensure Google GenAI SDK receives standard Vertex AI configuration
-    os.environ["GOOGLE_GENAI_USE_VERTEXAI"] = "true"
+    use_vertex = os.getenv("GOOGLE_GENAI_USE_VERTEXAI", "true")
+    os.environ["GOOGLE_GENAI_USE_VERTEXAI"] = use_vertex
     os.environ["GOOGLE_CLOUD_PROJECT"] = project_id
     os.environ["GOOGLE_CLOUD_LOCATION"] = location
 
@@ -117,6 +103,7 @@ def validate_environment() -> Dict[str, Any]:
         "mcp_url": os.getenv("MCP_SERVER_URL", "http://localhost:8000/mcp"),
         "telemetry_cfg": telemetry_cfg,
     }
+
 
 
 
