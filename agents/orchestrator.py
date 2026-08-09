@@ -70,6 +70,14 @@ def validate_environment() -> Dict[str, Any]:
     Fails loudly with RuntimeError if required variables are missing.
     Automatically sets GOOGLE_GENAI_USE_VERTEXAI and GOOGLE_CLOUD_PROJECT for the Google AI SDK.
     """
+    env_file = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".env"))
+    if os.path.exists(env_file):
+        try:
+            from dotenv import load_dotenv
+            load_dotenv(env_file)
+        except ImportError:
+            pass
+
     project_id = os.getenv("GOOGLE_CLOUD_PROJECT")
     location = os.getenv("GOOGLE_CLOUD_LOCATION", "us-central1")
     token = os.getenv("GRAFANA_SERVICE_ACCOUNT_TOKEN")
@@ -210,12 +218,24 @@ def inspect_and_log_tool_calls(agent_events: List[Any]) -> List[Dict[str, Any]]:
             logger.info(f"[TOOL RESPONSE] Tool '{name}' returned: {json.dumps(response_val)}")
             tool_logs.append({"type": "response", "name": name, "response": response_val})
 
-    # Audit create_annotation calls explicitly
+    # Audit create_annotation, create_folder, and update_dashboard calls explicitly
     annotation_calls = [t for t in tool_logs if t["type"] == "call" and t["name"] == "create_annotation"]
     annotation_responses = [t for t in tool_logs if t["type"] == "response" and t["name"] == "create_annotation"]
+    folder_calls = [t for t in tool_logs if t["type"] == "call" and t["name"] == "create_folder"]
+    dashboard_calls = [t for t in tool_logs if t["type"] == "call" and t["name"] == "update_dashboard"]
+
+    if not folder_calls:
+        logger.error("AUDIT WARNING: 'create_folder' tool was NEVER invoked by the agent during execution!")
+    else:
+        logger.info(f"AUDIT OK: 'create_folder' tool invoked {len(folder_calls)} time(s).")
+
+    if not dashboard_calls:
+        logger.error("AUDIT WARNING: 'update_dashboard' tool was NEVER invoked by the agent during execution!")
+    else:
+        logger.info(f"AUDIT OK: 'update_dashboard' tool invoked {len(dashboard_calls)} time(s).")
 
     if not annotation_calls:
-        logger.error("AUDIT WARNING: 'create_annotation' tool was NEVER invoked by the agent during execution!")
+        logger.info("AUDIT INFO: 'create_annotation' tool was not invoked (zero blockers or not requested).")
     else:
         logger.info(f"AUDIT OK: 'create_annotation' tool invoked {len(annotation_calls)} time(s).")
         for resp in annotation_responses:
@@ -256,11 +276,34 @@ def assert_ground_truth_preservation(agent_events: List[Any], findings: List[Dic
             )
 
 
+def assert_dashboard_metrics_verbatim(agent_events: List[Any]) -> None:
+    """
+    Asserts that exact telemetry metric names and label keys appear verbatim in captured
+    tool-call arguments for update_dashboard or agent events.
+    """
+    combined_output = extract_text_and_tool_args_from_events(agent_events)
+    required_tokens = [
+        "qc_blockers_current",
+        "qc_checks",
+        "domain",
+        "result",
+        "qc_loudness_deviation_lufs",
+        "language",
+        "job",
+        "first-pass-qc",
+    ]
+    for token in required_tokens:
+        if token not in combined_output:
+            raise AssertionError(
+                f"Required telemetry token '{token}' missing from agent response and captured tool calls!"
+            )
+
+
 async def run_adk_orchestration(
     report: Dict[str, Any], env_cfg: Dict[str, str]
 ) -> Dict[str, Any]:
     """
-    Asynchronously executes the Google ADK Agent workflow to create an incident on Grafana Cloud MCP.
+    Asynchronously executes the Google ADK Agent workflow to manage dashboards and incidents on Grafana Cloud MCP.
     """
     mcp_url = env_cfg["mcp_url"]
     token = env_cfg["token"]
@@ -272,7 +315,13 @@ async def run_adk_orchestration(
     )
     mcp_toolset = McpToolset(
         connection_params=connection_params,
-        tool_filter=["create_incident", "add_activity_to_incident", "create_annotation"],
+        tool_filter=[
+            "create_incident",
+            "add_activity_to_incident",
+            "create_annotation",
+            "create_folder",
+            "update_dashboard",
+        ],
     )
 
     try:
@@ -298,6 +347,101 @@ async def run_adk_orchestration(
 
         prompt_json = json.dumps(prompt_data, indent=2)
 
+        # Dashboard JSON template
+        dashboard_template = {
+            "uid": "first-pass-delivery-readiness",
+            "title": "Delivery Readiness",
+            "schemaVersion": 36,
+            "editable": True,
+            "time": {"from": "now-1h", "to": "now"},
+            "panels": [
+                {
+                    "id": 1,
+                    "title": "Current Delivery Blockers",
+                    "type": "stat",
+                    "gridPos": {"x": 0, "y": 0, "w": 6, "h": 6},
+                    "targets": [
+                        {
+                            "datasource": {"type": "prometheus", "uid": "grafanacloud-prom"},
+                            "expr": "qc_blockers_current",
+                            "instant": True,
+                            "refId": "A",
+                        }
+                    ],
+                    "fieldConfig": {
+                        "defaults": {
+                            "thresholds": {
+                                "mode": "absolute",
+                                "steps": [
+                                    {"color": "green", "value": None},
+                                    {"color": "red", "value": 1},
+                                ],
+                            }
+                        }
+                    },
+                },
+                {
+                    "id": 2,
+                    "title": "QC Checks by Domain & Outcome",
+                    "type": "barchart",
+                    "gridPos": {"x": 6, "y": 0, "w": 9, "h": 6},
+                    "targets": [
+                        {
+                            "datasource": {"type": "prometheus", "uid": "grafanacloud-prom"},
+                            "expr": "qc_checks",
+                            "instant": True,
+                            "legendFormat": "{{domain}} ({{result}})",
+                            "refId": "A",
+                        }
+                    ],
+                },
+                {
+                    "id": 3,
+                    "title": "Audio Loudness Deviation (LUFS)",
+                    "description": "Integrated loudness deviation against -27.0 ± 2.0 LUFS target",
+                    "type": "bargauge",
+                    "gridPos": {"x": 15, "y": 0, "w": 9, "h": 6},
+                    "options": {"orientation": "horizontal", "displayMode": "lcd"},
+                    "targets": [
+                        {
+                            "datasource": {"type": "prometheus", "uid": "grafanacloud-prom"},
+                            "expr": "qc_loudness_deviation_lufs",
+                            "instant": True,
+                            "legendFormat": "{{language}}",
+                            "refId": "A",
+                        }
+                    ],
+                    "fieldConfig": {
+                        "defaults": {
+                            "unit": "LUFS",
+                            "thresholds": {
+                                "mode": "absolute",
+                                "steps": [
+                                    {"color": "green", "value": None},
+                                    {"color": "red", "value": 2.01},
+                                ],
+                            },
+                        }
+                    },
+                },
+                {
+                    "id": 4,
+                    "title": "QC Findings Log Stream",
+                    "type": "logs",
+                    "gridPos": {"x": 0, "y": 6, "w": 24, "h": 10},
+                    "targets": [
+                        {
+                            "datasource": {"type": "loki", "uid": "grafanacloud-logs"},
+                            "expr": '{job="first-pass-qc"}',
+                            "refId": "A",
+                        }
+                    ],
+                },
+            ],
+        }
+
+        dashboard_json_str = json.dumps(dashboard_template, indent=2)
+
         user_prompt = f"""
 You are the First Pass Quality Control Agent.
 A technical master delivery evaluation completed with verdict: {report.get('verdict')}.
@@ -309,17 +453,30 @@ Structured Findings Ground Truth:
 {prompt_json}
 
 Instructions:
-1. Examine the structured findings. If there are delivery blockers (blocker_count > 0):
-2. Call `create_incident`:
-   - `title`: "Delivery Blocker: {master_id} ({blocker_count} Spec Non-Conformances)"
-   - `severity`: "{mapped_severity}"
-   - `roomPrefix`: "first-pass"
-3. Call `add_activity_to_incident` using the incident ID returned by `create_incident` (e.g. incidentID):
-   - `incidentId`: the ID returned from create_incident
-   - `body`: Detail each blocker finding. For every blocker, include its clause_id, spec clause_text, measured value, and expected value verbatim. Format requirement: put each blocker on its own separate line (or bullet point) with line breaks between blockers. Do NOT format multiple blockers into a single dense paragraph.
-4. Call `create_annotation` to create a timeline annotation:
-   - `text`: Timeline annotation describing the delivery blocker for {master_id}, explicitly referencing the violated clause IDs ({', '.join(clause_ids)}) and brief summary.
-5. In your final response, explain the spec clause failures retaining the exact clause IDs, measured values, and expected values verbatim. Do not compute or alter any numeric or measured values.
+1. Call tool `create_folder`:
+   - `title`: "First Pass Quality Control"
+   - `uid`: "first-pass-qc"
+   Note: If `create_folder` returns an error stating that the folder already exists (status 412), ignore the error and proceed immediately to step 2. Do NOT generate print statements or python code.
+
+2. Call tool `update_dashboard`:
+   - `folderUid`: "first-pass-qc"
+   - `overwrite`: true
+   - `message`: "Update Delivery Readiness dashboard for master {master_id}"
+   - `dashboard`: {dashboard_json_str}
+
+3. Examine blocker_count ({blocker_count}). If blocker_count > 0:
+   a. Call `create_incident`:
+      - `title`: "Delivery Blocker: {master_id} ({blocker_count} Spec Non-Conformances)"
+      - `severity`: "{mapped_severity}"
+      - `roomPrefix`: "first-pass"
+   b. Call `add_activity_to_incident`:
+      - `incidentId`: the ID returned from create_incident
+      - `body`: Detail each blocker finding. For every blocker, include its clause_id, spec clause_text, measured value, and expected value verbatim. Format requirement: put each blocker on its own separate line (or bullet point) with line breaks between blockers.
+   c. Call `create_annotation` to create a timeline annotation:
+      - `text`: Timeline annotation describing the delivery blocker for {master_id}, explicitly referencing the violated clause IDs ({', '.join(clause_ids)}) and brief summary.
+   If blocker_count == 0, do NOT call create_incident, add_activity_to_incident, or create_annotation.
+
+4. In your final response, explain the outcome retaining exact clause IDs, metric names, measured values, and expected values verbatim. Do not compute or alter any numeric or measured values.
 """
 
         logger.info("Initializing Google ADK Gemini model & LlmAgent (model: gemini-2.5-flash)...")
@@ -357,7 +514,10 @@ Instructions:
         logger.info("Asserting ground truth preservation against model response and tool calls...")
         assert_ground_truth_preservation(agent_events, findings)
 
-        logger.info("Ground truth preservation verified successfully.")
+        logger.info("Asserting dashboard metric tokens verbatim in tool calls...")
+        assert_dashboard_metrics_verbatim(agent_events)
+
+        logger.info("Ground truth and metric tokens verified successfully.")
         return {"status": "ok", "events_count": len(agent_events), "tool_logs": tool_logs}
 
     finally:
@@ -386,11 +546,9 @@ def run_delivery_qc(master_path: str, spec_path: str) -> Dict[str, Any]:
 
     logger.info(f"QC Run Finished. Verdict: {report['verdict']} (Blockers: {report['blocker_count']})")
 
-
-    if report["verdict"] == "REJECT":
-        logger.info("Delivery blockers detected. Triggering Google ADK Orchestrator workflow...")
-        adk_result = asyncio.run(run_adk_orchestration(report, env_cfg))
-        report["adk_result"] = adk_result
+    logger.info("Triggering Google ADK Orchestrator workflow for folder/dashboard and incident management...")
+    adk_result = asyncio.run(run_adk_orchestration(report, env_cfg))
+    report["adk_result"] = adk_result
 
     return report
 
@@ -406,3 +564,4 @@ if __name__ == "__main__":
     print(f"Verdict: {report['verdict']}")
     print(f"Blocker Count: {report['blocker_count']}")
     print("=" * 60)
+
