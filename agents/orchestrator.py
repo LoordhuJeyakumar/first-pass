@@ -265,11 +265,75 @@ def summarize_tool_response(name: str, response_val: Any) -> str:
     return f"[TOOL RESPONSE] Tool '{name}' returned: {dump_str}"
 
 
+def summarize_tool_call(name: str, args: Dict[str, Any]) -> str:
+    """Constructs a concise, single-line summary of tool call arguments for INFO-level logging."""
+    if not isinstance(args, dict):
+        args_str = str(args)
+        if len(args_str) > 120:
+            args_str = args_str[:117] + "..."
+        return f"[TOOL CALL] Invoked tool '{name}' with arguments: {args_str}"
+
+    if name == "update_dashboard":
+        folder_uid = args.get("folderUid", "N/A")
+        overwrite = args.get("overwrite", False)
+        dash = args.get("dashboard", {}) if isinstance(args.get("dashboard"), dict) else {}
+        uid = dash.get("uid", "N/A")
+        title = dash.get("title", "N/A")
+        panel_count = len(dash.get("panels", [])) if isinstance(dash.get("panels"), list) else 0
+        return (
+            f"[TOOL CALL] Invoked tool '{name}' with arguments: "
+            f"folderUid='{folder_uid}', overwrite={overwrite}, uid='{uid}', title='{title}', panels={panel_count}"
+        )
+
+    if name == "create_incident":
+        title = args.get("title", "N/A")
+        sev = args.get("severity", "N/A")
+        room = args.get("roomPrefix", "N/A")
+        return f"[TOOL CALL] Invoked tool '{name}' with arguments: title='{title}', severity='{sev}', roomPrefix='{room}'"
+
+    if name == "add_activity_to_incident":
+        inc_id = args.get("incidentId", "N/A")
+        body = args.get("body", "")
+        if len(body) > 80:
+            body = body[:77] + "..."
+        body_clean = body.replace("\n", " ")
+        return f"[TOOL CALL] Invoked tool '{name}' with arguments: incidentId='{inc_id}', body='{body_clean}'"
+
+    if name == "create_annotation":
+        dash_uid = args.get("dashboardUid", "N/A")
+        text = args.get("text", "N/A")
+        ann_time = args.get("time", "N/A")
+        return f"[TOOL CALL] Invoked tool '{name}' with arguments: dashboardUid='{dash_uid}', text='{text}', time={ann_time}"
+
+    dump_str = json.dumps(args)
+    if len(dump_str) > 120:
+        dump_str = dump_str[:117] + "..."
+    return f"[TOOL CALL] Invoked tool '{name}' with arguments: {dump_str}"
+
+
+def has_function_calls(events: List[Any]) -> bool:
+    """Checks whether any ADK event in events contains a function call."""
+    for ev in events:
+        if hasattr(ev, "get_function_calls"):
+            try:
+                calls = ev.get_function_calls()
+                if calls:
+                    return True
+            except Exception:
+                pass
+        content = getattr(ev, "content", None)
+        if content and hasattr(content, "parts"):
+            for part in content.parts:
+                if hasattr(part, "function_call") and part.function_call:
+                    return True
+    return False
+
+
 def inspect_and_log_tool_calls(agent_events: List[Any]) -> List[Dict[str, Any]]:
     """
     Explicitly logs all tool calls captured in ADK agent_events:
     tool name, invocation arguments, and returned responses/results.
-    Summarizes tool responses cleanly at INFO, with raw payloads sent to DEBUG.
+    Summarizes tool arguments and responses cleanly at INFO, with raw payloads sent to DEBUG.
     """
     tool_logs = []
     for event in agent_events:
@@ -289,7 +353,8 @@ def inspect_and_log_tool_calls(agent_events: List[Any]) -> List[Dict[str, Any]]:
         for call in calls:
             name = getattr(call, "name", "unknown")
             args = getattr(call, "args", {})
-            logger.info(f"[TOOL CALL] Invoked tool '{name}' with arguments: {json.dumps(args)}")
+            logger.debug(f"[TOOL CALL RAW] Invoked tool '{name}' with arguments: {json.dumps(args)}")
+            logger.info(summarize_tool_call(name, args))
             tool_logs.append({"type": "call", "name": name, "args": args})
 
         # Check function responses
@@ -636,20 +701,40 @@ Please execute the following tool calls in order:
         session_service = InMemorySessionService()
         runner = Runner(agent=agent, app_name="first-pass", session_service=session_service)
 
-        session = await session_service.create_session(app_name="first-pass", user_id="operator")
-        session_id = session.id
-
-        new_message = types.Content(
-            parts=[types.Part.from_text(text=user_prompt)], role="user"
-        )
-
-        logger.info("Executing Google ADK runner with Gemini 2.5 Flash on Vertex AI...")
+        max_attempts = 2
         agent_events = []
-        async for event in runner.run_async(
-            user_id="operator", session_id=session_id, new_message=new_message
-        ):
-            agent_events.append(event)
-            logger.debug(f"ADK Event received: {event}")
+
+        for attempt in range(1, max_attempts + 1):
+            logger.info(
+                f"Executing Google ADK runner with Gemini 2.5 Flash on Vertex AI (attempt {attempt}/{max_attempts})..."
+            )
+            session = await session_service.create_session(app_name="first-pass", user_id="operator")
+            session_id = session.id
+
+            new_message = types.Content(
+                parts=[types.Part.from_text(text=user_prompt)], role="user"
+            )
+
+            attempt_events = []
+            async for event in runner.run_async(
+                user_id="operator", session_id=session_id, new_message=new_message
+            ):
+                attempt_events.append(event)
+                logger.debug(f"ADK Event received: {event}")
+
+            if has_function_calls(attempt_events):
+                agent_events = attempt_events
+                break
+
+            if attempt < max_attempts:
+                logger.warning(
+                    f"ADK Agent attempt {attempt}/{max_attempts} produced zero tool calls (prose response detected). "
+                    f"Retrying orchestration (attempt {attempt + 1}/{max_attempts})..."
+                )
+            else:
+                agent_events = attempt_events
+                logger.error(f"ADK Agent made no tool calls after {max_attempts} attempts.")
+                raise RuntimeError(f"ADK Agent made no tool calls after {max_attempts} attempts.")
 
         logger.info("ADK execution completed. Inspecting and logging all tool calls captured in agent_events...")
         tool_logs = inspect_and_log_tool_calls(agent_events)
