@@ -505,7 +505,7 @@ async def run_adk_orchestration(
             "title": "Delivery Readiness",
             "schemaVersion": 36,
             "editable": True,
-            "time": {"from": "now-1h", "to": "now"},
+            "time": {"from": "now-24h", "to": "now"},
             "panels": [
                 {
                     "id": 1,
@@ -539,7 +539,7 @@ async def run_adk_orchestration(
                     "targets": [
                         {
                             "datasource": {"type": "prometheus", "uid": "grafanacloud-prom"},
-                            "expr": "last_over_time(qc_checks[1h])",
+                            "expr": "last_over_time(qc_checks[$__range])",
                             "instant": True,
                             "legendFormat": "{{domain}} · {{result}}",
                             "refId": "A",
@@ -556,7 +556,7 @@ async def run_adk_orchestration(
                     "targets": [
                         {
                             "datasource": {"type": "prometheus", "uid": "grafanacloud-prom"},
-                            "expr": "last_over_time(qc_loudness_deviation_lufs[1h])",
+                            "expr": "last_over_time(qc_loudness_deviation_lufs[$__range])",
                             "instant": True,
                             "legendFormat": "{{language}}",
                             "refId": "A",
