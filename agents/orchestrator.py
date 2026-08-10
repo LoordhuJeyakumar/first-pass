@@ -9,8 +9,11 @@ and interacts with Grafana Cloud via self-hosted MCP server using Google ADK to 
 import os
 import sys
 import json
+import time
 import logging
 import asyncio
+import warnings
+import argparse
 from typing import Dict, Any, List
 
 # Ensure project root is on sys.path
@@ -28,7 +31,46 @@ from google.genai import types
 from agents.check_engine import evaluate_master_against_spec
 from agents.telemetry import validate_telemetry_environment, emit_qc_telemetry
 
-logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
+
+def setup_logging(verbose: bool = False, plain: bool = False) -> None:
+    """
+    Configures application logging with Rich formatting by default, or stdlib logging when --plain.
+    Suppresses third-party noise (httpx, httpcore, ADK experimental warnings, mTLS warnings).
+    """
+    warnings.filterwarnings("ignore", category=UserWarning)
+    warnings.filterwarnings("ignore", message=".*mTLS.*")
+
+    logging.getLogger("httpx").setLevel(logging.WARNING)
+    logging.getLogger("httpcore").setLevel(logging.WARNING)
+
+    level = logging.DEBUG if verbose else logging.INFO
+
+    if plain:
+        logging.basicConfig(
+            level=level,
+            format="%(asctime)s [%(levelname)s] %(message)s",
+            force=True,
+        )
+    else:
+        try:
+            from rich.logging import RichHandler
+            logging.basicConfig(
+                level=level,
+                format="%(message)s",
+                datefmt="[%X]",
+                handlers=[RichHandler(rich_tracebacks=True, show_path=False)],
+                force=True,
+            )
+        except ImportError:
+            logging.basicConfig(
+                level=level,
+                format="%(asctime)s [%(levelname)s] %(message)s",
+                force=True,
+            )
+
+
+# Initialize default logging on import
+setup_logging()
 logger = logging.getLogger("FirstPassOrchestrator")
 
 
@@ -172,11 +214,62 @@ def extract_text_and_tool_args_from_events(agent_events: List[Any]) -> str:
     return "\n".join(extracted_texts)
 
 
+def parse_mcp_response_data(response_val: Any) -> Any:
+    """Unwraps inner JSON or text from MCP response payloads."""
+    if isinstance(response_val, dict) and "content" in response_val:
+        content = response_val.get("content", [])
+        if isinstance(content, list) and content:
+            item = content[0]
+            if isinstance(item, dict) and item.get("type") == "text":
+                text = item.get("text", "")
+                try:
+                    return json.loads(text)
+                except Exception:
+                    return text
+    return response_val
+
+
+def summarize_tool_response(name: str, response_val: Any) -> str:
+    """Constructs a concise, single-line summary of a tool response for INFO-level logging."""
+    data = parse_mcp_response_data(response_val)
+
+    if name == "create_incident" and isinstance(data, dict):
+        inc_id = data.get("incidentID", "N/A")
+        sev = data.get("severity", "N/A")
+        status = data.get("status", "N/A")
+        creator = data.get("createdByUser", {}).get("name", "N/A")
+        return f"[TOOL RESPONSE] Tool '{name}' returned: incidentID={inc_id}, severity={sev}, status={status}, createdBy='{creator}'"
+
+    if name == "update_dashboard" and isinstance(data, dict):
+        status = data.get("status", "N/A")
+        uid = data.get("uid", "N/A")
+        folder_uid = data.get("folderUid", "N/A")
+        url = data.get("url", "")
+        return f"[TOOL RESPONSE] Tool '{name}' returned: status={status}, uid='{uid}', folderUid='{folder_uid}', url='{url}'"
+
+    if name == "add_activity_to_incident" and isinstance(data, dict):
+        act_id = data.get("activityItemID", "N/A")
+        inc_id = data.get("incidentID", "N/A")
+        kind = data.get("activityKind", "N/A")
+        return f"[TOOL RESPONSE] Tool '{name}' returned: activityItemID='{act_id}', incidentID='{inc_id}', kind='{kind}'"
+
+    if name == "create_annotation" and isinstance(data, dict):
+        payload = data.get("Payload", data)
+        ann_id = payload.get("id", "N/A") if isinstance(payload, dict) else "N/A"
+        msg = payload.get("message", "Annotation added") if isinstance(payload, dict) else str(payload)
+        return f"[TOOL RESPONSE] Tool '{name}' returned: id={ann_id}, message='{msg}'"
+
+    dump_str = json.dumps(data) if isinstance(data, (dict, list)) else str(data)
+    if len(dump_str) > 120:
+        dump_str = dump_str[:117] + "..."
+    return f"[TOOL RESPONSE] Tool '{name}' returned: {dump_str}"
+
+
 def inspect_and_log_tool_calls(agent_events: List[Any]) -> List[Dict[str, Any]]:
     """
     Explicitly logs all tool calls captured in ADK agent_events:
     tool name, invocation arguments, and returned responses/results.
-    Checks whether create_annotation was invoked and returned successfully.
+    Summarizes tool responses cleanly at INFO, with raw payloads sent to DEBUG.
     """
     tool_logs = []
     for event in agent_events:
@@ -215,19 +308,14 @@ def inspect_and_log_tool_calls(agent_events: List[Any]) -> List[Dict[str, Any]]:
         for resp in responses:
             name = getattr(resp, "name", "unknown")
             response_val = getattr(resp, "response", {})
-            logger.info(f"[TOOL RESPONSE] Tool '{name}' returned: {json.dumps(response_val)}")
+            logger.debug(f"[TOOL RESPONSE RAW] Tool '{name}': {json.dumps(response_val)}")
+            logger.info(summarize_tool_response(name, response_val))
             tool_logs.append({"type": "response", "name": name, "response": response_val})
 
-    # Audit create_annotation, create_folder, and update_dashboard calls explicitly
+    # Audit create_annotation and update_dashboard calls explicitly
     annotation_calls = [t for t in tool_logs if t["type"] == "call" and t["name"] == "create_annotation"]
     annotation_responses = [t for t in tool_logs if t["type"] == "response" and t["name"] == "create_annotation"]
-    folder_calls = [t for t in tool_logs if t["type"] == "call" and t["name"] == "create_folder"]
     dashboard_calls = [t for t in tool_logs if t["type"] == "call" and t["name"] == "update_dashboard"]
-
-    if not folder_calls:
-        logger.info("AUDIT INFO: 'create_folder' tool was not invoked (folder existing or handled via update_dashboard).")
-    else:
-        logger.info(f"AUDIT OK: 'create_folder' tool invoked {len(folder_calls)} time(s).")
 
     if not dashboard_calls:
         logger.error("AUDIT WARNING: 'update_dashboard' tool was NEVER invoked by the agent during execution!")
@@ -522,7 +610,10 @@ Please execute the following tool calls in order:
 2. If blocker_count > 0 ({blocker_count} blockers present):
    a. Call `create_incident` tool with title "Delivery Blocker: {master_id} ({blocker_count} Spec Non-Conformances)", severity "{mapped_severity}", roomPrefix "first-pass".
    b. Call `add_activity_to_incident` tool using the returned incidentID with findings details verbatim.
-   c. Call `create_annotation` tool with text summarizing violated clauses ({', '.join(clause_ids)}).
+   c. Call `create_annotation` tool with arguments:
+      - dashboardUID: "first-pass-delivery-readiness"
+      - text: "Violated clauses: {', '.join(clause_ids)}"
+      - time: {int(time.time() * 1000)}
    If blocker_count == 0, do NOT call create_incident, add_activity_to_incident, or create_annotation.
 
 3. In your final response, summarize the actions taken, retaining exact clause IDs ({', '.join(clause_ids)}), metric names, measured values, and expected values verbatim.
@@ -558,7 +649,7 @@ Please execute the following tool calls in order:
             user_id="operator", session_id=session_id, new_message=new_message
         ):
             agent_events.append(event)
-            logger.info(f"ADK Event received: {event}")
+            logger.debug(f"ADK Event received: {event}")
 
         logger.info("ADK execution completed. Inspecting and logging all tool calls captured in agent_events...")
         tool_logs = inspect_and_log_tool_calls(agent_events)
@@ -606,6 +697,13 @@ def run_delivery_qc(master_path: str, spec_path: str) -> Dict[str, Any]:
 
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="First Pass Quality Control ADK Orchestrator")
+    parser.add_argument("--verbose", "-v", action="store_true", help="Enable verbose DEBUG logging")
+    parser.add_argument("--plain", action="store_true", help="Use plain stdlib logging output instead of Rich formatting")
+    args = parser.parse_args()
+
+    setup_logging(verbose=args.verbose, plain=args.plain)
+
     base_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
     default_master = os.path.join(base_dir, "data", "masters", "master_blockers.json")
     default_spec = os.path.join(base_dir, "data", "specs", "streamone.json")
@@ -616,4 +714,5 @@ if __name__ == "__main__":
     print(f"Verdict: {report['verdict']}")
     print(f"Blocker Count: {report['blocker_count']}")
     print("=" * 60)
+
 
