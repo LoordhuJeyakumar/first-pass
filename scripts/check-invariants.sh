@@ -12,7 +12,7 @@ ERRORS=0
 echo "🔍 Running deterministic invariant audit..."
 
 # Check 1: Every non-stdlib package in agents/requirements.txt is imported somewhere in the codebase.
-echo "  [Check 1/11] Verifying all non-stdlib packages in agents/requirements.txt are imported..."
+echo "  [Check 1/14] Verifying all non-stdlib packages in agents/requirements.txt are imported..."
 C1_OUT=$(python3 -c '
 import os, sys, glob, re
 
@@ -77,7 +77,7 @@ else
 fi
 
 # Check 2: At least one accepted Google AI package is imported under agents/
-echo "  [Check 2/11] Verifying accepted Google AI SDK import under agents/..."
+echo "  [Check 2/14] Verifying accepted Google AI SDK import under agents/..."
 C2_OUT=$(python3 -c '
 import glob, sys, re
 
@@ -123,7 +123,7 @@ else
 fi
 
 # Check 3: No import of any denylisted package
-echo "  [Check 3/11] Verifying no denylisted AI orchestration packages are imported..."
+echo "  [Check 3/14] Verifying no denylisted AI orchestration packages are imported..."
 C3_OUT=$(python3 -c '
 import glob, sys, re
 
@@ -156,7 +156,7 @@ else
 fi
 
 # Check 4: agents/check_engine.py imports only from stdlib allowlist
-echo "  [Check 4/11] Verifying agents/check_engine.py stdlib allowlist compliance..."
+echo "  [Check 4/14] Verifying agents/check_engine.py stdlib allowlist compliance..."
 C4_OUT=$(python3 -c '
 import ast, sys
 
@@ -198,7 +198,7 @@ else
 fi
 
 # Check 5: Every file path referenced in README.md and docs/*.md actually exists
-echo "  [Check 5/11] Verifying all file paths referenced in README.md and docs/*.md exist..."
+echo "  [Check 5/14] Verifying all file paths referenced in README.md and docs/*.md exist..."
 C5_OUT=$(python3 -c '
 import glob, re, os, sys
 
@@ -241,7 +241,7 @@ else
 fi
 
 # Check 6: Every environment variable required via os.getenv() appears in .env.example
-echo "  [Check 6/11] Verifying all os.getenv() variables appear in .env.example..."
+echo "  [Check 6/14] Verifying all os.getenv() variables appear in .env.example..."
 C6_OUT=$(python3 -c '
 import glob, re, os, sys
 
@@ -283,7 +283,7 @@ else
 fi
 
 # Check 7: No :latest image tag in any compose file or Dockerfile
-echo "  [Check 7/11] Verifying no :latest image tags in compose files or Dockerfiles..."
+echo "  [Check 7/14] Verifying no :latest image tags in compose files or Dockerfiles..."
 C7_OUT=$(python3 -c '
 import glob, re, sys
 
@@ -315,7 +315,7 @@ else
 fi
 
 # Check 8: Exactly one progress log exists in the tree
-echo "  [Check 8/11] Verifying exactly one progress log exists in tree..."
+echo "  [Check 8/14] Verifying exactly one progress log exists in tree..."
 C8_OUT=$(python3 -c '
 import glob, os, sys
 
@@ -337,7 +337,7 @@ else
 fi
 
 # Check 9: Any HTTP request to the MCP server URL carries an Authorization header
-echo "  [Check 9/11] Verifying MCP HTTP calls carry Authorization header..."
+echo "  [Check 9/14] Verifying MCP HTTP calls carry Authorization header..."
 C9_OUT=$(python3 -c '
 import glob, re, sys
 
@@ -368,7 +368,7 @@ else
 fi
 
 # Check 10: All three masters produce documented verdicts
-echo "  [Check 10/11] Verifying all three master files produce documented verdicts via check engine..."
+echo "  [Check 10/14] Verifying all three master files produce documented verdicts via check engine..."
 C10_OUT=$(python3 -c '
 import json, sys
 from agents.check_engine import evaluate_master_against_spec
@@ -408,7 +408,7 @@ else
 fi
 
 # Check 11: agents/check_engine.py and agents/telemetry.py line coverage floor
-echo "  [Check 11/13] Verifying agents/check_engine.py and agents/telemetry.py test coverage is at 100% floor..."
+echo "  [Check 11/14] Verifying agents/check_engine.py and agents/telemetry.py test coverage is at 100% floor..."
 PYTHON_EXEC=".venv/bin/python"
 
 if ! "$PYTHON_EXEC" -c "import pytest_cov" > /dev/null 2>&1; then
@@ -426,7 +426,7 @@ else
 fi
 
 # Check 12: Verifying no subprocess module usage in agents/orchestrator.py
-echo "  [Check 12/13] Verifying no subprocess module usage in agents/orchestrator.py..."
+echo "  [Check 12/14] Verifying no subprocess module usage in agents/orchestrator.py..."
 C12_OUT=$(python3 -c '
 import ast, sys
 target = "agents/orchestrator.py"
@@ -453,7 +453,7 @@ else
 fi
 
 # Check 13: Every variable declared in .env.example is read somewhere in the codebase or docker configs
-echo "  [Check 13/13] Verifying all .env.example variables are read in codebase or docker configs..."
+echo "  [Check 13/14] Verifying all .env.example variables are read in codebase or docker configs..."
 C13_OUT=$(python3 -c '
 import glob, re, os, sys
 
@@ -509,6 +509,132 @@ if [[ "$C13_OUT" == "OK" ]]; then
   echo "  ✅ Check 13 passed: All .env.example variables are read in codebase or docker configs."
 else
   echo "  ❌ ERROR Check 13 failed: .env.example variable not read anywhere: $C13_OUT"
+  ERRORS=$((ERRORS + 1))
+fi
+
+# Check 14: Verifying public documentation capability claims against codebase implementation
+echo "  [Check 14/14] Verifying public documentation capability claims against codebase implementation..."
+C14_OUT=$(python3 -c '
+import glob, os, sys, re, json, ast
+
+orch_path = "agents/orchestrator.py"
+tool_filter = set()
+agent_count = 0
+has_timeseries = False
+
+orch_content = ""
+if os.path.exists(orch_path):
+    with open(orch_path, "r", encoding="utf-8") as f:
+        orch_content = f.read()
+    m = re.search(r"tool_filter\s*=\s*\[(.*?)\]", orch_content, re.DOTALL)
+    if m:
+        tool_filter = set(re.findall(r"[\"\x27]([^\x27\"]+)[\"\x27]", m.group(1)))
+
+    tree = ast.parse(orch_content, filename=orch_path)
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Call):
+            if isinstance(node.func, ast.Name) and node.func.id in ("Agent", "LlmAgent"):
+                agent_count += 1
+            elif isinstance(node.func, ast.Attribute) and node.func.attr in ("Agent", "LlmAgent"):
+                agent_count += 1
+
+    has_timeseries = "timeseries" in orch_content
+
+check_engine_path = "agents/check_engine.py"
+engine_content = ""
+if os.path.exists(check_engine_path):
+    with open(check_engine_path, "r", encoding="utf-8") as f:
+        engine_content = f.read()
+
+has_true_peak = "true_peak" in engine_content.lower()
+
+if not has_true_peak:
+    for spec_file in glob.glob("data/specs/*.json"):
+        try:
+            with open(spec_file, "r", encoding="utf-8") as f:
+                spec_data = json.load(f)
+            clauses = spec_data.get("clauses", [])
+            for c in clauses:
+                chk = json.dumps(c.get("check", {})).lower()
+                if "true_peak" in chk:
+                    has_true_peak = True
+                    break
+        except Exception:
+            pass
+
+known_mcp_tools = {
+    "create_incident", "add_activity_to_incident", "create_annotation",
+    "update_dashboard", "alerting_manage_rules", "search_dashboards",
+    "get_dashboard_summary", "query_prometheus", "query_loki_logs",
+    "list_incidents", "generate_deeplink", "alerting_manage_routing"
+}
+
+named_sub_agents = [
+    "multi-agent", "agent crew", "sub-agent",
+    "Spec-Interpreter", "Release-Coordinator", "QC-Analyst",
+    "Observability-Actuator", "Remediation"
+]
+
+roadmap_kw = ["planned", "roadmap", "future", "vision", "target", "next", "proposed", "upcoming"]
+
+public_docs = ["README.md"] + [p for p in glob.glob("docs/*.md") if "docs/internal/" not in p and "evidence.md" not in p]
+violations = []
+eval_verbs = ["evaluat", "check", "validat", "verif", "measur", "assert", "enforc", "inspect"]
+
+for doc in public_docs:
+    if not os.path.exists(doc):
+        continue
+    with open(doc, "r", encoding="utf-8") as f:
+        lines = f.readlines()
+
+    in_roadmap = False
+    for line_num, line in enumerate(lines, 1):
+        stripped = line.strip()
+        if stripped.startswith("#"):
+            heading_text = stripped.lstrip("#").strip().lower()
+            if any(k in heading_text for k in ["planned", "roadmap", "future"]):
+                in_roadmap = True
+            else:
+                in_roadmap = False
+
+        if in_roadmap:
+            continue
+
+        # NOTE: Check 14 verifies documentation claims against code implementation (e.g., active tools/operations),
+        # but cannot catch code behaviors that are absent from documentation (e.g., unmentioned direct REST API calls).
+        for tool in known_mcp_tools:
+            if tool in line:
+                if tool not in tool_filter:
+                    violations.append(f"{doc}:{line_num} mentions tool \x27{tool}\x27 not in tool_filter")
+                elif tool == "alerting_manage_rules":
+                    has_write_op = bool(re.search(r"operation\s*:\s*\\?[\"\x27]?(create|update)", orch_content, re.IGNORECASE))
+                    if not has_write_op:
+                        violations.append(f"{doc}:{line_num} mentions active capability \x27{tool}\x27 but orchestrator.py lacks a WRITE operation (create/update)")
+
+        if ("True Peak" in line or "dBTP" in line) and any(v in line.lower() for v in eval_verbs) and not has_true_peak:
+            violations.append(f"{doc}:{line_num} asserts True Peak / dBTP capability but check engine / specs do not evaluate true_peak")
+
+        if ("timeseries" in line.lower() or "timeline annotation" in line.lower()) and not has_timeseries:
+            violations.append(f"{doc}:{line_num} asserts timeseries/timeline annotation but orchestrator lacks timeseries panel")
+
+        if agent_count <= 1:
+            line_low = line.lower()
+            if not any(r in line_low for r in roadmap_kw):
+                for kw in named_sub_agents:
+                    if kw.lower() in line_low:
+                        violations.append(f"{doc}:{line_num} asserts agent structure claim \x27{kw}\x27 but orchestrator only has {agent_count} agent(s)")
+
+if violations:
+    print("CAPABILITY_VIOLATIONS:" + " | ".join(violations))
+    sys.exit(1)
+else:
+    print("OK")
+' 2>&1 || true)
+
+if [[ "$C14_OUT" == "OK" ]]; then
+  echo "  ✅ Check 14 passed: Public documentation capability claims match codebase implementation."
+else
+  echo "  ❌ ERROR Check 14 failed: $C14_OUT"
   ERRORS=$((ERRORS + 1))
 fi
 
