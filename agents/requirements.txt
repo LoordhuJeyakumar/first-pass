@@ -1,4 +1,4 @@
-# First Pass — runtime and test dependencies.
+# First Pass — Python 3.14 runtime and test dependencies.
 # Google AI SDK and runtime dependencies pinned to exact verified versions.
 
 pytest==9.1.1
@@ -8,4 +8,4 @@ google-adk==2.6.3
 mcp==1.29.0
 prometheus-remote-writer==1.1.3
 rich==15.0.0
-
+requests==2.33.1  # Used for Grafana Ruler REST API pre-queries
