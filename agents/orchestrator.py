@@ -14,7 +14,7 @@ import logging
 import asyncio
 import warnings
 import argparse
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Tuple, Optional
 
 # Ensure project root is on sys.path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
@@ -209,9 +209,51 @@ def extract_text_and_tool_args_from_events(agent_events: List[Any]) -> str:
                         extracted_texts.append(json.dumps(call.args))
             except Exception as exc:
                 logger.error(f"Failed to extract function calls from event: {exc}", exc_info=True)
-                raise
-
     return "\n".join(extracted_texts)
+
+
+def check_existing_alert_rule(
+    grafana_url: str,
+    token: str,
+    folder_uid: str,
+    rule_group: str,
+    title: str,
+) -> Tuple[str, Optional[str]]:
+    """
+    Pre-queries Grafana Ruler REST API to check if an alert rule matching title exists in rule_group.
+    Returns a tuple (status, uid):
+      - ("found", "rule-uid"): Rule exists with specified string UID
+      - ("absent", None): Confirmed rule does not exist in folder/group
+      - ("failed", None): Pre-query failed (network timeout, HTTP non-200/404, invalid response JSON, missing creds)
+    """
+    if not grafana_url or not token:
+        logger.warning("Grafana Ruler API pre-query skipped: missing GRAFANA_URL or GRAFANA_SERVICE_ACCOUNT_TOKEN.")
+        return ("failed", None)
+    try:
+        import requests
+        base_url = grafana_url.rstrip("/")
+        headers = {"Authorization": f"Bearer {token}"}
+        endpoint = f"{base_url}/api/ruler/grafana/api/v1/rules/{folder_uid}"
+        resp = requests.get(endpoint, headers=headers, timeout=5)
+        if resp.status_code == 200:
+            data = resp.json()
+            group_rules = data.get(rule_group, [])
+            for rule in group_rules:
+                g_alert = rule.get("grafana_alert", {})
+                rule_title = g_alert.get("title") or rule.get("title")
+                rule_uid = g_alert.get("uid") or rule.get("uid")
+                if rule_title == title and rule_uid:
+                    return ("found", str(rule_uid))
+            return ("absent", None)
+        elif resp.status_code == 404:
+            logger.info("Grafana Ruler API pre-query returned HTTP 404 for folder '%s'; rule is confirmed absent.", folder_uid)
+            return ("absent", None)
+        else:
+            logger.warning("Grafana Ruler API pre-query failed with HTTP status %s: %s", resp.status_code, resp.text)
+            return ("failed", None)
+    except Exception as exc:
+        logger.warning("Grafana Ruler API pre-query failed with exception (%s): %s", type(exc).__name__, exc)
+        return ("failed", None)
 
 
 def parse_mcp_response_data(response_val: Any) -> Any:
@@ -233,19 +275,22 @@ def summarize_tool_response(name: str, response_val: Any) -> str:
     """Constructs a concise, single-line summary of a tool response for INFO-level logging."""
     data = parse_mcp_response_data(response_val)
 
-    if name == "create_incident" and isinstance(data, dict):
-        inc_id = data.get("incidentID", "N/A")
-        sev = data.get("severity", "N/A")
-        status = data.get("status", "N/A")
-        creator = data.get("createdByUser", {}).get("name", "N/A")
-        return f"[TOOL RESPONSE] Tool '{name}' returned: incidentID={inc_id}, severity={sev}, status={status}, createdBy='{creator}'"
+def summarize_tool_response(name: str, response: Any) -> str:
+    """Constructs a concise, single-line summary of tool response for INFO-level logging."""
+    data = response
+    if isinstance(response, dict) and "data" in response:
+        data = response["data"]
 
     if name == "update_dashboard" and isinstance(data, dict):
         status = data.get("status", "N/A")
         uid = data.get("uid", "N/A")
-        folder_uid = data.get("folderUid", "N/A")
-        url = data.get("url", "")
-        return f"[TOOL RESPONSE] Tool '{name}' returned: status={status}, uid='{uid}', folderUid='{folder_uid}', url='{url}'"
+        url = data.get("url", "N/A")
+        return f"[TOOL RESPONSE] Tool '{name}' returned: status='{status}', uid='{uid}', url='{url}'"
+
+    if name == "create_incident" and isinstance(data, dict):
+        inc_id = data.get("incidentID", "N/A")
+        title = data.get("title", "N/A")
+        return f"[TOOL RESPONSE] Tool '{name}' returned: incidentID='{inc_id}', title='{title}'"
 
     if name == "add_activity_to_incident" and isinstance(data, dict):
         act_id = data.get("activityItemID", "N/A")
@@ -258,6 +303,11 @@ def summarize_tool_response(name: str, response_val: Any) -> str:
         ann_id = payload.get("id", "N/A") if isinstance(payload, dict) else "N/A"
         msg = payload.get("message", "Annotation added") if isinstance(payload, dict) else str(payload)
         return f"[TOOL RESPONSE] Tool '{name}' returned: id={ann_id}, message='{msg}'"
+
+    if name == "alerting_manage_rules" and isinstance(data, dict):
+        uid = data.get("uid", data.get("id", "N/A"))
+        title = data.get("title", "N/A")
+        return f"[TOOL RESPONSE] Tool '{name}' returned: uid='{uid}', title='{title}'"
 
     dump_str = json.dumps(data) if isinstance(data, (dict, list)) else str(data)
     if len(dump_str) > 120:
@@ -305,6 +355,13 @@ def summarize_tool_call(name: str, args: Dict[str, Any]) -> str:
         ann_time = args.get("time", "N/A")
         return f"[TOOL CALL] Invoked tool '{name}' with arguments: dashboardUid='{dash_uid}', text='{text}', time={ann_time}"
 
+    if name == "alerting_manage_rules":
+        operation = args.get("operation", "N/A")
+        rule_group = args.get("rule_group", "N/A")
+        title = args.get("title", "N/A")
+        uid = args.get("uid", "N/A")
+        return f"[TOOL CALL] Invoked tool '{name}' with arguments: operation='{operation}', rule_group='{rule_group}', title='{title}', uid='{uid}'"
+
     dump_str = json.dumps(args)
     if len(dump_str) > 120:
         dump_str = dump_str[:117] + "..."
@@ -312,12 +369,17 @@ def summarize_tool_call(name: str, args: Dict[str, Any]) -> str:
 
 
 def has_function_calls(events: List[Any]) -> bool:
-    """Checks whether any ADK event in events contains a function call."""
+    """Checks whether any ADK event in events contains a function call or response."""
     for ev in events:
         if hasattr(ev, "get_function_calls"):
             try:
-                calls = ev.get_function_calls()
-                if calls:
+                if ev.get_function_calls():
+                    return True
+            except Exception:
+                pass
+        if hasattr(ev, "get_function_responses"):
+            try:
+                if ev.get_function_responses():
                     return True
             except Exception:
                 pass
@@ -326,6 +388,11 @@ def has_function_calls(events: List[Any]) -> bool:
             for part in content.parts:
                 if hasattr(part, "function_call") and part.function_call:
                     return True
+                if hasattr(part, "function_response") and part.function_response:
+                    return True
+        ev_str = str(ev)
+        if "function_call" in ev_str or "function_response" in ev_str:
+            return True
     return False
 
 
@@ -377,10 +444,11 @@ def inspect_and_log_tool_calls(agent_events: List[Any]) -> List[Dict[str, Any]]:
             logger.info(summarize_tool_response(name, response_val))
             tool_logs.append({"type": "response", "name": name, "response": response_val})
 
-    # Audit create_annotation and update_dashboard calls explicitly
+    # Audit create_annotation, update_dashboard, and alerting_manage_rules calls explicitly
     annotation_calls = [t for t in tool_logs if t["type"] == "call" and t["name"] == "create_annotation"]
     annotation_responses = [t for t in tool_logs if t["type"] == "response" and t["name"] == "create_annotation"]
     dashboard_calls = [t for t in tool_logs if t["type"] == "call" and t["name"] == "update_dashboard"]
+    alerting_calls = [t for t in tool_logs if t["type"] == "call" and t["name"] == "alerting_manage_rules"]
 
     if not dashboard_calls:
         logger.error("AUDIT WARNING: 'update_dashboard' tool was NEVER invoked by the agent during execution!")
@@ -402,6 +470,40 @@ def inspect_and_log_tool_calls(agent_events: List[Any]) -> List[Dict[str, Any]]:
 
             if is_err:
                 logger.error(f"AUDIT FAILURE: 'create_annotation' returned an error: {resp_data}")
+
+    if not alerting_calls:
+        logger.info("AUDIT INFO: 'alerting_manage_rules' tool was not invoked (zero blockers or not requested).")
+    else:
+        logger.info(f"AUDIT OK: 'alerting_manage_rules' tool invoked {len(alerting_calls)} time(s).")
+        alerting_responses = [t for t in tool_logs if t["type"] == "response" and t["name"] == "alerting_manage_rules"]
+        for resp in alerting_responses:
+            resp_data = resp.get("response", {})
+            is_err = False
+            has_uid = False
+
+            if isinstance(resp_data, dict):
+                if resp_data.get("isError") or "error" in resp_data:
+                    is_err = True
+                resp_str = json.dumps(resp_data)
+                if "uid" in resp_str or "id" in resp_str or "title" in resp_str:
+                    has_uid = True
+            elif isinstance(resp_data, list):
+                resp_str = json.dumps(resp_data)
+                if "uid" in resp_str or "id" in resp_str:
+                    has_uid = True
+            else:
+                resp_str = str(resp_data)
+                if "error" in resp_str.lower() and "message" not in resp_str.lower():
+                    is_err = True
+                if "uid" in resp_str.lower() or "id" in resp_str.lower():
+                    has_uid = True
+
+            if is_err:
+                logger.error(f"AUDIT FAILURE: 'alerting_manage_rules' returned an error: {resp_data}")
+            elif not has_uid and any(c.get("args", {}).get("operation") in ("create", "update") for c in alerting_calls):
+                logger.error(f"AUDIT FAILURE: 'alerting_manage_rules' response missing rule uid/identifier: {resp_data}")
+            else:
+                logger.info("AUDIT OK: 'alerting_manage_rules' response verified (contains valid rule identifier).")
 
     return tool_logs
 
@@ -473,6 +575,7 @@ async def run_adk_orchestration(
             "add_activity_to_incident",
             "create_annotation",
             "update_dashboard",
+            "alerting_manage_rules",
         ],
     )
 
@@ -506,6 +609,18 @@ async def run_adk_orchestration(
             "schemaVersion": 36,
             "editable": True,
             "time": {"from": "now-24h", "to": "now"},
+            "annotations": {
+                "list": [
+                    {
+                        "builtIn": 1,
+                        "datasource": {"type": "grafana", "uid": "-- Grafana --"},
+                        "enable": True,
+                        "hide": False,
+                        "name": "Annotations & Alerts",
+                        "type": "dashboard",
+                    }
+                ]
+            },
             "panels": [
                 {
                     "id": 1,
@@ -586,10 +701,93 @@ async def run_adk_orchestration(
                     },
                 },
                 {
+                    "id": 5,
+                    "title": "Active Blockers History",
+                    "type": "timeseries",
+                    "gridPos": {"x": 0, "y": 6, "w": 24, "h": 6},
+                    "targets": [
+                        {
+                            "datasource": {"type": "prometheus", "uid": "grafanacloud-prom"},
+                            "expr": "qc_blockers_current",
+                            "legendFormat": "Blockers",
+                            "refId": "A",
+                        }
+                    ],
+                    "fieldConfig": {
+                        "defaults": {
+                            "custom": {
+                                "drawStyle": "line",
+                                "lineInterpolation": "linear",
+                                "showPoints": "always",
+                                "pointSize": 6,
+                                "spanNulls": False,
+                            }
+                        }
+                    },
+                },
+                {
                     "id": 4,
                     "title": "QC Findings Log Stream",
                     "type": "table",
-                    "gridPos": {"x": 0, "y": 6, "w": 24, "h": 10},
+                    "gridPos": {"x": 0, "y": 12, "w": 24, "h": 10},
+                    "options": {
+                        "cellHeight": "md",
+                        "footer": {"show": False},
+                        "showHeader": True,
+                        "wrapText": True,
+                    },
+                    "fieldConfig": {
+                        "defaults": {
+                            "custom": {
+                                "align": "auto",
+                                "inspect": True,
+                            }
+                        },
+                        "overrides": [
+                            {
+                                "matcher": {"id": "byName", "options": "Time"},
+                                "properties": [
+                                    {"id": "custom.width", "value": 170}
+                                ],
+                            },
+                            {
+                                "matcher": {"id": "byName", "options": "Clause"},
+                                "properties": [
+                                    {"id": "custom.width", "value": 80}
+                                ],
+                            },
+                            {
+                                "matcher": {"id": "byName", "options": "Severity"},
+                                "properties": [
+                                    {"id": "custom.width", "value": 90}
+                                ],
+                            },
+                            {
+                                "matcher": {"id": "byName", "options": "Measured"},
+                                "properties": [
+                                    {"id": "custom.width", "value": 110}
+                                ],
+                            },
+                            {
+                                "matcher": {"id": "byName", "options": "Expected"},
+                                "properties": [
+                                    {"id": "custom.width", "value": 180}
+                                ],
+                            },
+                            {
+                                "matcher": {"id": "byName", "options": "Language"},
+                                "properties": [
+                                    {"id": "custom.width", "value": 90}
+                                ],
+                            },
+                            {
+                                "matcher": {"id": "byName", "options": "Finding Description"},
+                                "properties": [
+                                    {"id": "custom.minWidth", "value": 450}
+                                ],
+                            },
+                        ],
+                    },
                     "targets": [
                         {
                             "datasource": {"type": "loki", "uid": "grafanacloud-logs"},
@@ -612,6 +810,8 @@ async def run_adk_orchestration(
                                     "labels": True,
                                     "labelTypes": True,
                                     "run_id": True,
+                                    "traceID": True,
+                                    "traceID (field)": True,
                                 },
                                 "indexByName": {
                                     "Time": 0,
@@ -657,6 +857,77 @@ async def run_adk_orchestration(
             f"- [{f['clause_id']}] measured {f['measured']}, expected {f['expected']}"
             for f in formatted_findings
         )
+        findings_summary = ", ".join(
+            f"{f['clause_id']} measured {f['measured']}" for f in formatted_findings
+        )
+
+        grafana_url = os.getenv("GRAFANA_URL", "")
+        rule_title = "First Pass - Delivery Blockers Present"
+        rule_status, existing_rule_uid = check_existing_alert_rule(
+            grafana_url=grafana_url,
+            token=token,
+            folder_uid="first-pass-qc",
+            rule_group="first-pass-alerts",
+            title=rule_title,
+        )
+
+        alert_rule_data = [
+            {
+                "refId": "A",
+                "datasourceUid": "grafanacloud-prom",
+                "model": {"expr": "qc_blockers_current"},
+                "relativeTimeRange": {"from": 600, "to": 0},
+            },
+            {
+                "refId": "B",
+                "datasourceUid": "__expr__",
+                "model": {
+                    "type": "threshold",
+                    "expression": "A",
+                    "conditions": [{"evaluator": {"type": "gt", "params": [0]}}],
+                },
+            },
+        ]
+
+        if rule_status == "found":
+            alerting_instruction = (
+                f"Call `alerting_manage_rules` tool with arguments:\n"
+                f"      - operation: \"update\"\n"
+                f"      - uid: \"{existing_rule_uid}\"\n"
+                f"      - title: \"{rule_title}\"\n"
+                f"      - folder_uid: \"first-pass-qc\"\n"
+                f"      - rule_group: \"first-pass-alerts\"\n"
+                f"      - org_id: 1\n"
+                f"      - condition: \"B\"\n"
+                f"      - for: \"1m\"\n"
+                f"      - no_data_state: \"OK\"\n"
+                f"      - exec_err_state: \"Alerting\"\n"
+                f"      - disable_provenance: false\n"
+                f"      - labels: {{\"service\": \"first-pass\"}}\n"
+                f"      - data: {json.dumps(alert_rule_data)}"
+            )
+        elif rule_status == "absent":
+            alerting_instruction = (
+                f"Call `alerting_manage_rules` tool with arguments:\n"
+                f"      - operation: \"create\"\n"
+                f"      - title: \"{rule_title}\"\n"
+                f"      - folder_uid: \"first-pass-qc\"\n"
+                f"      - rule_group: \"first-pass-alerts\"\n"
+                f"      - org_id: 1\n"
+                f"      - condition: \"B\"\n"
+                f"      - for: \"1m\"\n"
+                f"      - no_data_state: \"OK\"\n"
+                f"      - exec_err_state: \"Alerting\"\n"
+                f"      - disable_provenance: false\n"
+                f"      - labels: {{\"service\": \"first-pass\"}}\n"
+                f"      - data: {json.dumps(alert_rule_data)}"
+            )
+        else:
+            logger.warning(
+                "Grafana Ruler API pre-query status is 'failed'. Skipping alerting_manage_rules instruction "
+                "for this run to prevent duplicate alert rule creation."
+            )
+            alerting_instruction = "Skip calling `alerting_manage_rules` for this run because Grafana Ruler API pre-query failed."
 
         user_prompt = f"""
 A technical master delivery evaluation completed for master ID '{master_id}' with verdict {report.get('verdict')} ({blocker_count} blockers).
@@ -669,7 +940,7 @@ Please execute the following tool calls in order:
 1. Call `update_dashboard` tool with arguments:
    - folderUid: "first-pass-qc"
    - overwrite: true
-   - message: "Update Delivery Readiness dashboard for master {master_id}"
+   - message: "Update Delivery Readiness dashboard for master {master_id} (Findings: {findings_summary})"
    - dashboard: {dashboard_json}
 
 2. If blocker_count > 0 ({blocker_count} blockers present):
@@ -679,7 +950,8 @@ Please execute the following tool calls in order:
       - dashboardUID: "first-pass-delivery-readiness"
       - text: "Violated clauses: {', '.join(clause_ids)}"
       - time: {int(time.time() * 1000)}
-   If blocker_count == 0, do NOT call create_incident, add_activity_to_incident, or create_annotation.
+   d. {alerting_instruction}
+   If blocker_count == 0, do NOT call create_incident, add_activity_to_incident, create_annotation, or alerting_manage_rules.
 
 3. In your final response, summarize the actions taken, retaining exact clause IDs ({', '.join(clause_ids)}), metric names, measured values, and expected values verbatim.
 """
@@ -692,7 +964,8 @@ Please execute the following tool calls in order:
             name="FirstPassOrchestrator",
             model=gemini_model,
             instruction=(
-                "You are an automated delivery Quality Control orchestrator. Execute actions strictly by making native tool function calls. "
+                "You are an automated delivery Quality Control orchestrator. Execute actions strictly by calling the provided tools. "
+                "Do NOT respond in plain prose or conversational text. You MUST call the tools (`update_dashboard`, `create_incident`, `add_activity_to_incident`, `create_annotation`, `alerting_manage_rules`) as instructed. "
                 "If any tool returns an error (such as HTTP 412 indicating a folder already exists), ignore the tool error and continue executing the remaining tool calls."
             ),
             tools=[mcp_toolset],
@@ -701,14 +974,16 @@ Please execute the following tool calls in order:
         session_service = InMemorySessionService()
         runner = Runner(agent=agent, app_name="first-pass", session_service=session_service)
 
-        max_attempts = 2
+        max_attempts = 6
         agent_events = []
+
+        await asyncio.sleep(30)
 
         for attempt in range(1, max_attempts + 1):
             logger.info(
                 f"Executing Google ADK runner with Gemini 2.5 Flash on Vertex AI (attempt {attempt}/{max_attempts})..."
             )
-            session = await session_service.create_session(app_name="first-pass", user_id="operator")
+            session = await session_service.create_session(app_name="first-pass", user_id=f"operator-{attempt}-{int(time.time())}")
             session_id = session.id
 
             new_message = types.Content(
@@ -716,11 +991,22 @@ Please execute the following tool calls in order:
             )
 
             attempt_events = []
-            async for event in runner.run_async(
-                user_id="operator", session_id=session_id, new_message=new_message
-            ):
-                attempt_events.append(event)
-                logger.debug(f"ADK Event received: {event}")
+            try:
+                async for event in runner.run_async(
+                    user_id=session.user_id, session_id=session_id, new_message=new_message
+                ):
+                    attempt_events.append(event)
+                    logger.debug(f"ADK Event received: {event}")
+            except Exception as exc:
+                if attempt < max_attempts:
+                    wait_sec = 30 * attempt
+                    logger.warning(
+                        f"ADK Agent attempt {attempt}/{max_attempts} hit transient error ({type(exc).__name__}: {exc}). "
+                        f"Backing off for {wait_sec}s before retrying..."
+                    )
+                    await asyncio.sleep(wait_sec)
+                    continue
+                raise
 
             if has_function_calls(attempt_events):
                 agent_events = attempt_events
@@ -731,6 +1017,7 @@ Please execute the following tool calls in order:
                     f"ADK Agent attempt {attempt}/{max_attempts} produced zero tool calls (prose response detected). "
                     f"Retrying orchestration (attempt {attempt + 1}/{max_attempts})..."
                 )
+                await asyncio.sleep(5)
             else:
                 agent_events = attempt_events
                 logger.error(f"ADK Agent made no tool calls after {max_attempts} attempts.")
@@ -785,15 +1072,16 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="First Pass Quality Control ADK Orchestrator")
     parser.add_argument("--verbose", "-v", action="store_true", help="Enable verbose DEBUG logging")
     parser.add_argument("--plain", action="store_true", help="Use plain stdlib logging output instead of Rich formatting")
+    parser.add_argument("--master", "-m", help="Path to master JSON metadata file")
     args = parser.parse_args()
 
     setup_logging(verbose=args.verbose, plain=args.plain)
 
     base_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
-    default_master = os.path.join(base_dir, "data", "masters", "master_blockers.json")
+    master_file = os.path.abspath(args.master) if args.master else os.path.join(base_dir, "data", "masters", "master_blockers.json")
     default_spec = os.path.join(base_dir, "data", "specs", "streamone.json")
 
-    report = run_delivery_qc(default_master, default_spec)
+    report = run_delivery_qc(master_file, default_spec)
     print("\n" + "=" * 60)
     print(f"QC Evaluation Complete: {report['master_id']}")
     print(f"Verdict: {report['verdict']}")
