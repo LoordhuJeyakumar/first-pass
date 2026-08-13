@@ -14,7 +14,7 @@ Public documentation is authored specifically for outside readers, judges, and d
 |---|---|
 | `README.md` | System overview, setup guide, architecture summary, and data provenance. |
 | `AGENTS.md` | Single source of truth for AI agent system instructions and constraints. |
-| `docs/ARCHITECTURE.md` | Technical design, multi-agent crew layout, and MCP integration. |
+| `docs/ARCHITECTURE.md` | Technical design, single-agent MCP architecture, deterministic check engine, and planned roadmap. |
 | `docs/DOMAIN.md` | Primer on film delivery QC concepts and multi-language dependencies. |
 | `docs/DISCLOSURE.md` | Secret hygiene and disclosure policy enforcement rules. |
 | `docs/evidence.md` | Verified citations supporting domain facts *(pending)*. |
