@@ -51,4 +51,4 @@ First Pass bridges the gap between static reports and active operations by:
 - Ingesting master metadata and specification rules into Grafana Cloud.
 - Dynamically creating alert rules derived from spec clauses.
 - Automatically opening operational incidents and annotating dashboard timelines.
-- Executing multi-agent fix plan generation via the Model Context Protocol (MCP).
+- Executing automated operational actions via the Model Context Protocol (MCP).
