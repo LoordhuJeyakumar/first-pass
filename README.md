@@ -4,14 +4,14 @@
 
 Roughly a quarter of film masters fail platform Quality Control (QC) on first submission — most often for mundane, preventable reasons such as an audio mix delivered at theatrical loudness (~−24 LUFS) against a streaming platform spec requiring ~−27 LUFS. Every rejection incurs redelivery fees and risks missing an announced premiere date.
 
-First Pass treats delivery readiness as an **observability and automated action problem**. Powered by Google ADK and Gemini on Vertex AI, a multi-agent crew evaluates technical master metadata against a platform's delivery specification and **acts** directly inside Grafana Cloud through the Grafana MCP server:
+First Pass treats delivery readiness as an **observability and automated action problem**. Driven by a deterministic Python check engine and powered by Google ADK with Gemini on Vertex AI, a single bounded agent evaluates technical master metadata against a platform's delivery specification and **acts** directly inside Grafana Cloud through the Grafana MCP server:
 
-- Builds and updates a **Delivery Readiness** dashboard.
-- Generates **alert rules** derived directly from delivery specification clauses.
-- Opens an **incident** when a delivery blocker is detected, annotated with the breached spec clause.
-- Posts a ranked, human-readable **fix plan** directly into the incident timeline.
+- Builds and updates a **Delivery Readiness** dashboard (`update_dashboard`).
+- Opens an **incident** when delivery blockers are detected (`create_incident`).
+- Posts finding details and clause non-conformances to the incident activity log (`add_activity_to_incident`).
+- Attaches timeline **annotations** to the delivery readiness dashboard (`create_annotation`).
 
-The operator gets a clear operational answer: **PASS likely** or **REJECT — N blockers**, each traced back to its specific spec clause, supported by a live action ledger of every agent action. For pan-India releases, India mode adds a multi-language readiness grid modeling Central Board of Film Certification (CBFC) gating dependencies across simultaneous multi-language releases.
+The operator gets a clear operational answer: **PASS likely** or **REJECT — N blockers**, each traced back to its specific spec clause, supported by a live action ledger of every agent action. For pan-India releases, the deterministic check engine evaluates Central Board of Film Certification (CBFC) regulatory gating dependencies across simultaneous multi-language releases.
 
 Built for the **Agentic Cinema Hackathon (Grafana Track)**, 2026.
 
@@ -20,10 +20,10 @@ Built for the **Agentic Cinema Hackathon (Grafana Track)**, 2026.
 Full details are documented in [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
 
 In brief:
-- **Orchestration**: Google ADK agents (Python) run on Google Cloud Platform with Gemini models via Vertex AI.
+- **Orchestration**: A single Google ADK agent (Python) runs on Google Cloud Platform with Gemini models via Vertex AI.
 - **Grafana MCP Server**: A self-hosted `grafana/mcp-grafana` server running in Docker on a virtual machine, configured with `-t streamable-http` and authenticated using a Grafana service-account token.
 - **Unattended Authentication**: The MCP server is self-hosted rather than using Grafana Cloud's hosted endpoint because the hosted endpoint authenticates via interactive OAuth 2.1 without a machine-token path. Self-hosting with a service-account token allows unattended agents to operate reliably without human manual authentication prompts.
-- **Deterministic Check Engine**: All measurements and clause checks are performed in pure, deterministic Python code. The LLM orchestrates workflows, interprets specs, and generates prose fix plans, but never invents or calculates numbers.
+- **Deterministic Check Engine**: All measurements and clause checks are performed in pure, deterministic Python code. The LLM orchestrates workflows, interprets specs, and executes Grafana write actions, but never invents or calculates numbers.
 
 For an introduction to film delivery QC terminology, see [`docs/DOMAIN.md`](docs/DOMAIN.md).
 
@@ -36,7 +36,7 @@ For an introduction to film delivery QC terminology, see [`docs/DOMAIN.md`](docs
 2. **Grafana Cloud**: Create a Grafana Cloud stack. Ensure an administrator accepts the Grafana Assistant terms, create a service account with the Editor role, and generate a service-account token.
 3. **Google Cloud**: Create a GCP project, activate billing, and enable the Vertex AI API (`aiplatform.googleapis.com`).
 4. **MCP Server**: Refer to [`mcp/`](mcp/) for Docker Compose instructions to deploy `grafana/mcp-grafana` on your GCE Virtual Machine.
-5. **Agents**: Refer to [`agents/`](agents/) for installation and run instructions.
+5. **Agents**: Requires Python 3.14 (pinned in `.python-version`). Refer to [`agents/`](agents/) for virtualenv creation (`.venv`), package installation (`agents/requirements.txt`), and run instructions.
 
 ## Data Provenance
 
