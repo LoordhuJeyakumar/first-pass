@@ -36,6 +36,59 @@ def evaluate_audio_loudness(loudness_lufs: float, target: float = -27.0, toleran
         }
 
 
+def evaluate_audio_true_peak(true_peak_dbtp: float, target_max: float = -2.0) -> Dict[str, Any]:
+    """
+    Evaluates True Peak audio level against a maximum dBTP limit.
+    Clause A-2.2: True Peak of every audio track must not exceed target_max dBTP.
+    """
+    if true_peak_dbtp <= target_max:
+        return {
+            "passed": True,
+            "severity": None,
+            "message": f"Audio True Peak {true_peak_dbtp:.1f} dBTP within maximum limit {target_max:.1f} dBTP.",
+            "measured": f"{true_peak_dbtp:.1f} dBTP",
+            "expected": f"<= {target_max:.1f} dBTP",
+        }
+    else:
+        return {
+            "passed": False,
+            "severity": "blocker",
+            "message": f"Audio True Peak violation: measured {true_peak_dbtp:.1f} dBTP exceeds maximum limit {target_max:.1f} dBTP.",
+            "measured": f"{true_peak_dbtp:.1f} dBTP",
+            "expected": f"<= {target_max:.1f} dBTP",
+        }
+
+
+def evaluate_language_readiness(
+    audio_tracks: List[Dict[str, Any]],
+    timed_text: List[Dict[str, Any]],
+    certifications: Dict[str, str],
+) -> Dict[str, float]:
+    """
+    Computes per-language delivery readiness ratio (0.0 to 1.0).
+    For each language present in audio_tracks, timed_text, or certifications:
+    Score is fraction of 3 conditions satisfied:
+      1. Audio track exists
+      2. Subtitle track exists
+      3. Certification == 'cleared'
+    """
+    audio_langs = {t.get("language") for t in audio_tracks if t.get("language")}
+    sub_langs = {t.get("language") for t in timed_text if t.get("language")}
+    cert_langs = set(certifications.keys())
+
+    all_langs = sorted(list(audio_langs | sub_langs | cert_langs))
+    readiness = {}
+
+    for lang in all_langs:
+        c1 = 1 if lang in audio_langs else 0
+        c2 = 1 if lang in sub_langs else 0
+        c3 = 1 if certifications.get(lang) == "cleared" else 0
+        score = round((c1 + c2 + c3) / 3.0, 3)
+        readiness[lang] = score
+
+    return readiness
+
+
 def evaluate_video_color_primaries(color_primaries: str, target: str = "BT.2020") -> Dict[str, Any]:
     """
     Evaluates video color primaries.
@@ -192,6 +245,40 @@ def evaluate_master_against_spec(master: Dict[str, Any], spec: Dict[str, Any]) -
                         else:
                             warning_count += 1
 
+        # Audio True Peak Check
+        elif domain == "audio" and check.get("op") in ("max", "lte"):
+            target_max = check.get("target", -2.0)
+            for track in audio_tracks:
+                lang = track.get("language", "unknown")
+                tp = track.get("true_peak_dbtp")
+                if tp is not None:
+                    res = evaluate_audio_true_peak(tp, target_max=target_max)
+                    evaluations.append({
+                        "clause_id": clause_id,
+                        "domain": domain,
+                        "passed": res["passed"],
+                        "result": "pass" if res["passed"] else "fail",
+                        "language": lang,
+                        "true_peak_dbtp": tp,
+                        "target_max_dbtp": target_max,
+                    })
+                    if not res["passed"]:
+                        finding = {
+                            "clause_id": clause_id,
+                            "domain": domain,
+                            "severity": severity_on_fail,
+                            "clause_text": clause_text,
+                            "language": lang,
+                            "measured": res["measured"],
+                            "expected": res["expected"],
+                            "message": f"[{clause_id}] {lang} audio: {res['message']}",
+                        }
+                        findings.append(finding)
+                        if severity_on_fail == "blocker":
+                            blocker_count += 1
+                        else:
+                            warning_count += 1
+
         # Video Primaries Check
         elif domain == "video" and check.get("op") == "equals":
             target = check.get("target", "BT.2020")
@@ -284,6 +371,8 @@ def evaluate_master_against_spec(master: Dict[str, Any], spec: Dict[str, Any]) -
                 break
         india_report = evaluate_india_mode_gating(certifications, orig_lang)
 
+    readiness = evaluate_language_readiness(audio_tracks, timed_text, certifications)
+
     verdict = "REJECT" if blocker_count > 0 else "PASS"
 
     return {
@@ -295,5 +384,6 @@ def evaluate_master_against_spec(master: Dict[str, Any], spec: Dict[str, Any]) -
         "findings": findings,
         "evaluations": evaluations,
         "india_mode": india_report,
+        "readiness": readiness,
     }
 

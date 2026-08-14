@@ -9,7 +9,7 @@
     "hdr_metadata": { "format": "HDR10", "max_cll": 1000, "max_fall": 400 }
   },
   "audio_tracks": [
-    { "language": "ta-IN", "role": "original", "channels": "5.1", "integrated_loudness_lufs": -26.5, "true_peak_dbtp": -1.2 }
+    { "language": "ta-IN", "role": "original", "channels": "5.1", "integrated_loudness_lufs": -26.5, "true_peak_dbtp": -2.1 }
   ],
   "timed_text": [
     { "language": "ta-IN", "type": "subtitle", "format": "IMSC1" }

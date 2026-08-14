@@ -20,6 +20,7 @@ ALLOWED_LABEL_SETS = {
     "qc_checks": {"__name__", "domain", "result"},
     "qc_loudness_deviation_lufs": {"__name__", "language"},
     "qc_blockers_current": {"__name__"},
+    "qc_readiness_ratio": {"__name__", "language"},
 }
 
 
@@ -132,6 +133,20 @@ def build_prometheus_metrics(report: Dict[str, Any], timestamp_ms: Optional[int]
                 "values": [dev_val],
                 "timestamps": [ts_ms],
             })
+
+    # 4. qc_readiness_ratio{language}
+    readiness = report.get("readiness", {})
+    for lang, ratio_val in readiness.items():
+        readiness_labels = {
+            "__name__": "qc_readiness_ratio",
+            "language": str(lang),
+        }
+        validate_metric_labels("qc_readiness_ratio", readiness_labels)
+        metrics.append({
+            "metric": readiness_labels,
+            "values": [float(ratio_val)],
+            "timestamps": [ts_ms],
+        })
 
     return metrics
 

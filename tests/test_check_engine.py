@@ -13,6 +13,8 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")
 
 from agents.check_engine import (
     evaluate_audio_loudness,
+    evaluate_audio_true_peak,
+    evaluate_language_readiness,
     evaluate_video_color_primaries,
     evaluate_timed_text_coverage,
     evaluate_packaging_naming,
@@ -394,5 +396,119 @@ def test_evaluate_master_india_mode_integration():
     assert report["india_mode"]["original_language"] == "ta-IN"
     assert report["india_mode"]["original_status"] == "pending"
     assert report["india_mode"]["dubs_blocked"] is True
+
+
+# -----------------------------------------------------------------------------
+# Clause A-2.2: True Peak Level (max -2.0 dBTP)
+# -----------------------------------------------------------------------------
+
+def test_audio_true_peak_pass():
+    result = evaluate_audio_true_peak(-2.5, target_max=-2.0)
+    assert result["passed"] is True
+    assert result["severity"] is None
+    assert "dBTP" in result["message"]
+
+
+def test_audio_true_peak_exact_limit_pass():
+    result = evaluate_audio_true_peak(-2.0, target_max=-2.0)
+    assert result["passed"] is True
+    assert result["severity"] is None
+
+
+def test_audio_true_peak_violation_fail():
+    result = evaluate_audio_true_peak(-1.0, target_max=-2.0)
+    assert result["passed"] is False
+    assert result["severity"] == "blocker"
+    assert "dBTP" in result["message"]
+
+
+@pytest.mark.parametrize("true_peak,target_max,expected_passed,expected_severity", [
+    (-2.5, -2.0, True, None),
+    (-2.0, -2.0, True, None),
+    (-1.9, -2.0, False, "blocker"),
+    (-1.0, -2.0, False, "blocker"),
+    (0.0, -2.0, False, "blocker"),
+])
+def test_evaluate_audio_true_peak_table_driven(true_peak, target_max, expected_passed, expected_severity):
+    res = evaluate_audio_true_peak(true_peak, target_max=target_max)
+    assert res["passed"] is expected_passed
+    assert res["severity"] == expected_severity
+
+
+def test_audio_true_peak_warning_severity():
+    """Tests True Peak check with warning severity when severity_on_fail is warning."""
+    spec = {
+        "spec_id": "TEST-SPEC-TP-WARN",
+        "clauses": [
+            {
+                "clause_id": "A-2.2-WARN",
+                "domain": "audio",
+                "check": {"op": "max", "target": -2.0},
+                "severity_on_fail": "warning",
+            }
+        ]
+    }
+    master = {
+        "master_id": "TEST-TP-WARN-MASTER",
+        "audio_tracks": [{"language": "ta-IN", "true_peak_dbtp": -1.0}],
+    }
+    report = evaluate_master_against_spec(master, spec)
+    assert report["verdict"] == "PASS"
+    assert report["warning_count"] == 1
+    assert report["blocker_count"] == 0
+
+
+# -----------------------------------------------------------------------------
+# Language Readiness Ratio
+# -----------------------------------------------------------------------------
+
+def test_language_readiness_all_cleared():
+    audio = [{"language": "ta-IN"}]
+    sub = [{"language": "ta-IN"}]
+    certs = {"ta-IN": "cleared"}
+    res = evaluate_language_readiness(audio, sub, certs)
+    assert res["ta-IN"] == 1.0
+
+
+def test_language_readiness_partial():
+    audio = [{"language": "ta-IN"}, {"language": "hi-IN"}]
+    sub = [{"language": "hi-IN"}]  # missing ta-IN
+    certs = {"ta-IN": "cleared", "hi-IN": "pending"}
+    res = evaluate_language_readiness(audio, sub, certs)
+    # ta-IN: audio yes (1), sub no (0), cert cleared yes (1) -> 2/3 = 0.667
+    assert res["ta-IN"] == 0.667
+    # hi-IN: audio yes (1), sub yes (1), cert cleared no (0) -> 2/3 = 0.667
+    assert res["hi-IN"] == 0.667
+
+
+def test_language_readiness_zero_score():
+    audio = []
+    sub = []
+    certs = {"kn-IN": "pending"}
+    res = evaluate_language_readiness(audio, sub, certs)
+    assert res["kn-IN"] == 0.0
+
+
+def test_master_blockers_full_integration_with_true_peak():
+    """
+    Integration test verifying master_blockers against real streamone spec
+    produces 3 blockers (Loudness A-2.1, True Peak A-2.2, Subtitles T-4.2).
+    """
+    import json
+    spec_path = os.path.join(os.path.dirname(__file__), "..", "data", "specs", "streamone.json")
+    blockers_path = os.path.join(os.path.dirname(__file__), "..", "data", "masters", "master_blockers.json")
+    with open(spec_path, "r", encoding="utf-8") as f:
+        spec = json.load(f)
+    with open(blockers_path, "r", encoding="utf-8") as f:
+        master = json.load(f)
+
+    report = evaluate_master_against_spec(master, spec)
+    assert report["verdict"] == "REJECT"
+    assert report["blocker_count"] == 3
+    clause_ids = [f["clause_id"] for f in report["findings"]]
+    assert "A-2.1" in clause_ids
+    assert "A-2.2" in clause_ids
+    assert "T-4.2" in clause_ids
+
 
 

@@ -94,6 +94,40 @@ def test_check_existing_alert_rule_failed_exception(caplog):
             assert "RuntimeError" in caplog.text
 
 
+def test_ensure_delivery_readiness_dashboard_success():
+    from agents.orchestrator import ensure_delivery_readiness_dashboard
+    mock_resp = MagicMock()
+    mock_resp.status_code = 200
+    mock_resp.json.return_value = {"uid": "first-pass-delivery-readiness"}
+    with patch("requests.post", return_value=mock_resp):
+        ok, uid = ensure_delivery_readiness_dashboard(
+            grafana_url="https://example.com",
+            token="token123",
+            folder_uid="first-pass-qc",
+            dashboard_template={"title": "Delivery Readiness"},
+        )
+        assert ok is True
+        assert uid == "first-pass-delivery-readiness"
+
+
+def test_ensure_delivery_readiness_dashboard_failure(caplog):
+    from agents.orchestrator import ensure_delivery_readiness_dashboard
+    mock_resp = MagicMock()
+    mock_resp.status_code = 500
+    mock_resp.text = "Internal Server Error"
+    with caplog.at_level(logging.WARNING):
+        with patch("requests.post", return_value=mock_resp):
+            ok, uid = ensure_delivery_readiness_dashboard(
+                grafana_url="https://example.com",
+                token="token123",
+                folder_uid="first-pass-qc",
+                dashboard_template={"title": "Delivery Readiness"},
+            )
+            assert ok is False
+            assert uid is None
+            assert "HTTP 500" in caplog.text
+
+
 def test_all_module_type_hints_resolve():
     import typing
     import inspect
@@ -106,4 +140,5 @@ def test_all_module_type_hints_resolve():
             if obj.__module__ == mod.__name__:
                 hints = typing.get_type_hints(obj)
                 assert isinstance(hints, dict)
+
 

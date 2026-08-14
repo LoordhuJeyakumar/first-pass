@@ -77,7 +77,7 @@ For automated delivery workflows operating unattended in a CI/CD or delivery pip
 - Designed for Docker deployment on a GCE Virtual Machine (currently executed locally).
 - Authenticated using a persistent Grafana Service Account Token (Editor role).
 - Exposed over `streamable-http` transport.
-- Configured with `--enabled-tools` in Docker Compose to restrict MCP server capability to eight operational domains (`incident`, `dashboard`, `alerting`, `annotations`, `search`, `query`, `folder`, `datasource`), providing defense-in-depth alongside the agent's stricter five-tool `tool_filter` allowlist.
+- Configured with `--enabled-tools` in Docker Compose to restrict MCP server capability to operational domains (`incident`, `dashboard`, `alerting`, `annotations`, `search`, `query`, `folder`, `datasource`), providing defense-in-depth alongside the agent's stricter four-tool `tool_filter` allowlist.
 - Pinned to a verified, published Docker image release tag.
 
 This self-hosted pattern is the officially recommended approach for unattended automated agents interacting with Grafana Cloud.
@@ -86,13 +86,15 @@ This self-hosted pattern is the officially recommended approach for unattended a
 
 The system runs as a two-stage operational pipeline:
 
-1. **Deterministic Check Engine (`agents/check_engine.py`)**: Runs before any LLM interaction. It evaluates master metadata against target specification clauses, checks audio loudness, HDR color primaries, timed text language coverage, and CBFC regulatory gating. It outputs structured finding objects and streams Prometheus metrics (`qc_checks`, `qc_loudness_deviation_lufs`, `qc_blockers_current`) and Loki log entries.
-2. **Single Bounded Agent (`agents/orchestrator.py`)**: Instantiates a single Google ADK `Agent` (`FirstPassOrchestrator`) using Gemini 2.5 Flash on Vertex AI. The agent holds an `McpToolset` strictly bounded by an explicit `tool_filter` containing five allowlisted tools:
+1. **Deterministic Check Engine (`agents/check_engine.py`)**: Runs before any LLM interaction. It evaluates master metadata against target specification clauses, checks audio loudness, audio true peak, HDR color primaries, timed text language coverage, and CBFC regulatory gating. It outputs structured finding objects, pushes the **Delivery Readiness** dashboard directly to Grafana Cloud (`POST /api/dashboards/db`), and streams Prometheus metrics (`qc_checks`, `qc_loudness_deviation_lufs`, `qc_blockers_current`, `qc_readiness_ratio`) and Loki log entries.
+2. **Single Bounded Agent (`agents/orchestrator.py`)**: Instantiates a single Google ADK `Agent` (`FirstPassOrchestrator`) using Gemini 2.5 Flash on Vertex AI. The agent holds an `McpToolset` strictly bounded by an explicit `tool_filter` containing four allowlisted MCP tools:
    - `create_incident`: Opens a Grafana Cloud incident when delivery blockers are present.
    - `add_activity_to_incident`: Posts clause non-conformance details to the incident timeline.
    - `create_annotation`: Attaches timeline annotations to the Delivery Readiness dashboard.
-   - `update_dashboard`: Creates or updates the Delivery Readiness dashboard layout and queries.
    - `alerting_manage_rules`: Creates and manages Grafana alert rules for delivery blocker conditions.
+
+### Architectural Decision (2026-08-14): Deterministic Dashboard Publishing
+Asking the LLM to carry a ~10KB dashboard JSON payload through tool calls proved unreliable, frequently emitting empty payloads or triggering HTTP 400 Bad Request errors. Following the principle that deterministic work belongs in code rather than prompt transport, Python pre-publishes the Delivery Readiness dashboard directly (`POST /api/dashboards/db`) prior to LLM orchestration. Moving JSON data plumbing to Python took orchestration reliability from 0/4 to 5/5 consecutive verified executions, keeping the agent strictly focused on operational judgment (incident narratives, annotation text, alert rule configuration).
 
 ### Grafana Ruler REST API Read Path
 To guarantee alert rule idempotency without handing complex list-then-branch conditionals to the LLM, Python pre-queries Grafana Cloud directly via the Ruler REST API (`GET /api/ruler/grafana/api/v1/rules/first-pass-qc`) using `GRAFANA_URL` and `GRAFANA_SERVICE_ACCOUNT_TOKEN` before the LLM runs.
@@ -141,11 +143,10 @@ By isolating run identifiers to Loki logs rather than Prometheus metric labels, 
 ## MCP Tool Surface
 
 ### Active Allowlisted Tools (`tool_filter`)
-The active agent operates exclusively through a bounded `McpToolset` restricted to five allowlisted tools:
+The active agent operates exclusively through a bounded `McpToolset` restricted to four allowlisted MCP tools:
 - `create_incident`: Opens an incident in Grafana Cloud when delivery blockers are detected.
 - `add_activity_to_incident`: Appends structured clause violation findings to the incident timeline.
 - `create_annotation`: Posts timeline annotations on the Delivery Readiness dashboard.
-- `update_dashboard`: Creates or updates the Delivery Readiness dashboard layout and panel queries.
 - `alerting_manage_rules`: Creates and manages Grafana alert rules for delivery blocker conditions.
 
 ### Planned Tools (Roadmap)

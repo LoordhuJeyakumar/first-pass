@@ -9,11 +9,11 @@
     "hdr_metadata": { "format": "HDR10", "max_cll": 1000, "max_fall": 400 }
   },
   "audio_tracks": [
-    { "language": "ta-IN", "role": "original", "channels": "5.1", "integrated_loudness_lufs": -26.8, "true_peak_dbtp": -1.5 },
+    { "language": "ta-IN", "role": "original", "channels": "5.1", "integrated_loudness_lufs": -26.8, "true_peak_dbtp": -2.1 },
     { "language": "hi-IN", "role": "dub", "channels": "5.1", "integrated_loudness_lufs": -27.1, "true_peak_dbtp": -2.0 },
-    { "language": "te-IN", "role": "dub", "channels": "5.1", "integrated_loudness_lufs": -26.5, "true_peak_dbtp": -1.8 },
+    { "language": "te-IN", "role": "dub", "channels": "5.1", "integrated_loudness_lufs": -26.5, "true_peak_dbtp": -2.3 },
     { "language": "kn-IN", "role": "dub", "channels": "5.1", "integrated_loudness_lufs": -27.0, "true_peak_dbtp": -2.0 },
-    { "language": "ml-IN", "role": "dub", "channels": "5.1", "integrated_loudness_lufs": -26.9, "true_peak_dbtp": -1.9 }
+    { "language": "ml-IN", "role": "dub", "channels": "5.1", "integrated_loudness_lufs": -26.9, "true_peak_dbtp": -2.2 }
   ],
   "timed_text": [
     { "language": "ta-IN", "type": "subtitle", "format": "IMSC1" },

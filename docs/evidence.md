@@ -37,7 +37,7 @@ This document grounds First Pass in domain literature, technical standards, and 
 
 To evaluate delivery readiness deterministically, First Pass tests master metadata against `StreamOne` ("StreamOne Platform Global Delivery Specification v2026.1"). `StreamOne` is a realistic fictional delivery specification created for demonstration and testing, modeled on published streaming delivery guidelines (such as EBU R128 audio loudness targets and SMPTE ST 2084 HDR transfer standards).
 
-First Pass evaluates four explicit specification clauses defined in the `StreamOne` specification:
+First Pass evaluates five explicit specification clauses defined in the `StreamOne` specification:
 
 ### 1. Clause A-2.1 — Audio Integrated Loudness
 - **Specification Constraint**: Integrated loudness of every audio track must equal −27.0 LUFS with a tolerance of ±2.0 LU (acceptable range: −29.0 LUFS to −25.0 LUFS).
@@ -58,6 +58,11 @@ First Pass evaluates four explicit specification clauses defined in the `StreamO
 - **Specification Constraint**: Component file basenames and directory paths must conform to the StreamOne package naming pattern.
 - **Domain Baseline**: Modeled on Interoperable Master Format (IMF / SMPTE ST 2067-2) asset mapping conventions.
 - **Realistic Failure Caught**: Non-standard asset basenames or illegal characters that prevent automated ingest parsers from indexing package manifests. Evaluated as a non-blocking warning.
+
+### 5. Clause A-2.2 — Audio True Peak
+- **Specification Constraint**: True peak level of every audio track must not exceed −2.0 dBTP.
+- **Domain Baseline**: Modeled on ITU-R BS.1770-4 true-peak measurement and EBU R128 delivery guidelines.
+- **Realistic Failure Caught**: Inter-sample peaks in high-level localized audio mixes exceeding the −2.0 dBTP ceiling, risking clipping during platform sample-rate conversion. Evaluated as a critical delivery blocker.
 
 ---
 
@@ -84,9 +89,8 @@ Commercial automated QC software products—including **Interra Baton**, **Vener
 - **Primary Source**: Gartner Press Release / Research Report, *Gartner Identifies Top Trends in Agentic AI*, June 25, 2025 ([`gartner.com`](https://www.gartner.com)).
 - **Industry Context**: Unconstrained AI agents that rely on LLMs to perform arithmetic calculations, operate as generic chatbots, or execute unmonitored decision loops frequently fail in enterprise environments due to non-deterministic errors, excessive token consumption, and a lack of operational auditability.
 
-### The First Pass Architectural Solution
-First Pass directly addresses the failure risks identified by Gartner by implementing a strictly bounded, deterministic multi-agent architecture:
-1. **Deterministic Computation**: The LLM orchestrates workflows and explains findings, but **never computes measurements**. All numerical evaluations (loudness LUFS, color space matching, subtitle coverage, component naming) are computed by pure Python functions, guaranteeing 100% reproducible and testable results.
-2. **Structured Telemetry and Audit Trail**: Every check execution emits low-cardinality Prometheus metrics (`qc_checks{domain,result}`) and structured Loki JSON log entries containing complete run context.
-3. **Action-Oriented Multi-Agent Control**: Built using the Google Agent Development Kit (ADK) and Gemini on Vertex AI, the agent crew uses the Model Context Protocol (MCP) to execute explicit, verifiable write operations (`update_dashboard`, `create_incident`, `add_activity_to_incident`, `create_annotation`).
+First Pass directly addresses the failure risks identified by Gartner by implementing a strictly bounded, single-agent operational control system:
+1. **Deterministic Computation**: The LLM orchestrates workflows and explains findings, but **never computes measurements**. All numerical evaluations (loudness LUFS, true peak dBTP, color space matching, subtitle coverage, component naming) are computed by pure Python functions, guaranteeing 100% reproducible and testable results.
+2. **Structured Telemetry and Audit Trail**: Every check execution emits low-cardinality Prometheus metrics (`qc_checks{domain,result}`, `qc_loudness_deviation_lufs`, `qc_readiness_ratio`) and structured Loki JSON log entries containing complete run context.
+3. **Action-Oriented Operational Control**: Built using the Google Agent Development Kit (ADK) and Gemini on Vertex AI, the single bounded agent uses the Model Context Protocol (MCP) to execute explicit, verifiable write operations (`create_incident`, `add_activity_to_incident`, `create_annotation`, `alerting_manage_rules`).
 4. **Quantifiable Operational Value**: By identifying delivery non-conformance prior to submission and automatically opening Grafana incidents annotated with exact violated clause IDs, First Pass eliminates redelivery cycles, prevents financial penalties, and protects distribution release windows.

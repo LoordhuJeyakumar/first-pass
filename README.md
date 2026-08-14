@@ -4,12 +4,12 @@
 
 Roughly a quarter of film masters fail platform Quality Control (QC) on first submission — most often for mundane, preventable reasons such as an audio mix delivered at theatrical loudness (~−24 LUFS) against a streaming platform spec requiring ~−27 LUFS. Every rejection incurs redelivery fees and risks missing an announced premiere date.
 
-First Pass treats delivery readiness as an **observability and automated action problem**. Driven by a deterministic Python check engine and powered by Google ADK with Gemini on Vertex AI, a single bounded agent evaluates technical master metadata against a platform's delivery specification and **acts** directly inside Grafana Cloud through the Grafana MCP server:
+First Pass treats delivery readiness as an **observability and automated action problem**. Driven by a deterministic Python check engine and powered by Google ADK with Gemini on Vertex AI, a single bounded agent evaluates technical master metadata against a platform's delivery specification. Python deterministically pushes the **Delivery Readiness** dashboard directly to Grafana Cloud (`POST /api/dashboards/db`), while the agent acts through four allowlisted Grafana MCP tools:
 
-- Builds and updates a **Delivery Readiness** dashboard (`update_dashboard`).
 - Opens an **incident** when delivery blockers are detected (`create_incident`).
 - Posts finding details and clause non-conformances to the incident activity log (`add_activity_to_incident`).
 - Attaches timeline **annotations** to the delivery readiness dashboard (`create_annotation`).
+- Configures or verifies provisioned **alert rules** for delivery blocker detection (`alerting_manage_rules`).
 
 The operator gets a clear operational answer: **PASS likely** or **REJECT — N blockers**, each traced back to its specific spec clause, supported by a live action ledger of every agent action. For pan-India releases, the deterministic check engine evaluates Central Board of Film Certification (CBFC) regulatory gating dependencies across simultaneous multi-language releases.
 

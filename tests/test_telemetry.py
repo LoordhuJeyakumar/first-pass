@@ -73,6 +73,8 @@ def test_validate_metric_labels_valid_sets():
     validate_metric_labels("qc_loudness_deviation_lufs", {"__name__": "qc_loudness_deviation_lufs", "language": "ta-IN"})
     # Valid qc_blockers_current
     validate_metric_labels("qc_blockers_current", {"__name__": "qc_blockers_current"})
+    # Valid qc_readiness_ratio
+    validate_metric_labels("qc_readiness_ratio", {"__name__": "qc_readiness_ratio", "language": "ta-IN"})
 
 
 def test_validate_metric_labels_rejects_unknown_metric():
@@ -172,9 +174,9 @@ def test_build_prometheus_metrics_master_blockers(master_blockers, streamone_spe
     report = evaluate_master_against_spec(master_blockers, streamone_spec)
     metrics = build_prometheus_metrics(report, timestamp_ms=1700000000000)
 
-    # master_blockers has 2 blockers
+    # master_blockers has 3 blockers
     blockers_metric = [m for m in metrics if m["metric"]["__name__"] == "qc_blockers_current"][0]
-    assert blockers_metric["values"] == [2.0]
+    assert blockers_metric["values"] == [3.0]
 
     # Loudness deviation metric for ta-IN should be +3.0 LUFS (-24.0 vs -27.0 target)
     ta_dev = [
@@ -182,6 +184,13 @@ def test_build_prometheus_metrics_master_blockers(master_blockers, streamone_spe
         if m["metric"]["__name__"] == "qc_loudness_deviation_lufs" and m["metric"]["language"] == "ta-IN"
     ][0]
     assert ta_dev["values"] == [3.0]
+
+    # Readiness ratio for ta-IN should be present
+    ta_readiness = [
+        m for m in metrics
+        if m["metric"]["__name__"] == "qc_readiness_ratio" and m["metric"]["language"] == "ta-IN"
+    ][0]
+    assert ta_readiness["values"] == [0.667]
 
 
 # -----------------------------------------------------------------------------
@@ -200,7 +209,7 @@ def test_build_loki_log_payload_master_blockers(master_blockers, streamone_spec)
     assert streams[0]["stream"] == {"job": "first-pass-qc", "service_name": "first-pass"}
 
     values = streams[0]["values"]
-    assert len(values) == 2  # 2 blocker findings in master_blockers
+    assert len(values) == 3  # 3 blocker findings in master_blockers
 
     # Inspect first finding log line
     first_ts, first_log_str = values[0]
@@ -332,7 +341,7 @@ def test_emit_qc_telemetry_full_flow(
     assert result["status"] == "ok"
     assert result["run_id"] == "run-TEST-EMIT-123"
     assert result["metrics_count"] > 0
-    assert result["logs_count"] == 2
+    assert result["logs_count"] == 3
 
     mock_send_prom.assert_called_once()
     mock_send_loki.assert_called_once()
@@ -351,7 +360,7 @@ def test_emit_qc_telemetry_auto_generated_run_id(
     assert result["status"] == "ok"
     assert result["run_id"].startswith("run-STRM-2026-0142-")
     assert result["metrics_count"] > 0
-    assert result["logs_count"] == 2
+    assert result["logs_count"] == 3
 
 
 @patch("agents.telemetry.send_prometheus_metrics")

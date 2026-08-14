@@ -15,6 +15,17 @@
       "severity_on_fail": "blocker"
     },
     {
+      "clause_id": "A-2.2",
+      "domain": "audio",
+      "text": "True Peak of every audio track must not exceed -2.0 dBTP.",
+      "check": {
+        "field": "audio_tracks[].true_peak_dbtp",
+        "op": "max",
+        "target": -2.0
+      },
+      "severity_on_fail": "blocker"
+    },
+    {
       "clause_id": "V-1.3",
       "domain": "video",
       "text": "HDR masters must carry BT.2020 primaries with PQ transfer.",

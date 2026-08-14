@@ -384,7 +384,7 @@ try:
 
     b_m = json.load(open("data/masters/master_blockers.json", encoding="utf-8"))
     b_rep = evaluate_master_against_spec(b_m, spec)
-    if b_rep["verdict"] != "REJECT" or b_rep["blocker_count"] != 2:
+    if b_rep["verdict"] != "REJECT" or b_rep["blocker_count"] != 3:
         print("master_blockers mismatch: verdict=" + str(b_rep["verdict"]) + ", blockers=" + str(b_rep["blocker_count"]))
         sys.exit(1)
 
@@ -577,7 +577,7 @@ named_sub_agents = [
 
 roadmap_kw = ["planned", "roadmap", "future", "vision", "target", "next", "proposed", "upcoming"]
 
-public_docs = ["README.md"] + [p for p in glob.glob("docs/*.md") if "docs/internal/" not in p and "evidence.md" not in p]
+public_docs = ["README.md"] + [p for p in glob.glob("docs/*.md") if "docs/internal/" not in p]
 violations = []
 eval_verbs = ["evaluat", "check", "validat", "verif", "measur", "assert", "enforc", "inspect"]
 
