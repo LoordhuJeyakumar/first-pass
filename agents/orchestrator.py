@@ -812,7 +812,7 @@ async def run_adk_orchestration(
                     "description": "Delivery readiness ratio per language (0.0 to 1.0)",
                     "type": "bargauge",
                     "gridPos": {"x": 0, "y": 6, "w": 12, "h": 6},
-                    "options": {"orientation": "horizontal", "displayMode": "lcd"},
+                    "options": {"orientation": "horizontal", "displayMode": "basic"},
                     "targets": [
                         {
                             "datasource": {"type": "prometheus", "uid": "grafanacloud-prom"},
