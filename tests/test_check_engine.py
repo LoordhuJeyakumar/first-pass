@@ -511,4 +511,26 @@ def test_master_blockers_full_integration_with_true_peak():
     assert "T-4.2" in clause_ids
 
 
+def test_evaluate_master_loudness_evaluation_includes_tolerance_lu():
+    """
+    Verifies that clause A-2.1 evaluation output contains tolerance_lu and target_lufs
+    matching the spec's tolerance value (2.0 LU) and target (-27.0 LUFS).
+    """
+    import json
+    spec_path = os.path.join(os.path.dirname(__file__), "..", "data", "specs", "streamone.json")
+    blockers_path = os.path.join(os.path.dirname(__file__), "..", "data", "masters", "master_blockers.json")
+    with open(spec_path, "r", encoding="utf-8") as f:
+        spec = json.load(f)
+    with open(blockers_path, "r", encoding="utf-8") as f:
+        master = json.load(f)
+
+    report = evaluate_master_against_spec(master, spec)
+    a21_evals = [e for e in report["evaluations"] if e.get("clause_id") == "A-2.1"]
+    assert len(a21_evals) > 0
+    for ev in a21_evals:
+        assert ev["tolerance_lu"] == 2.0
+        assert ev["target_lufs"] == -27.0
+
+
+
 

@@ -430,3 +430,39 @@ class TestThreadSafety:
             t.join()
 
         assert not errors, f"Concurrent thread safety errors: {errors}"
+
+
+def test_api_fixture_gating_and_success(monkeypatch):
+    """
+    Tests that POST /api/fixture returns 404 when CONSOLE_DEV_FIXTURES is not set,
+    and returns 200 with run_id when CONSOLE_DEV_FIXTURES=1.
+    """
+    app_mod = _fresh_app()
+    client = _make_client(app_mod)
+
+    # 1. Without CONSOLE_DEV_FIXTURES env var -> 404
+    monkeypatch.delenv("CONSOLE_DEV_FIXTURES", raising=False)
+    resp = client.post("/api/fixture", json={"verdict": "PASS"})
+    assert resp.status_code == 404
+
+    # 2. With CONSOLE_DEV_FIXTURES=1 -> 200 and seedable
+    monkeypatch.setenv("CONSOLE_DEV_FIXTURES", "1")
+    fixture_payload = {
+        "verdict": "REJECT",
+        "blocker_count": 2,
+        "master_id": "TEST-FIXTURE-MASTER",
+        "evaluations": [],
+        "findings": [],
+    }
+    resp_dev = client.post("/api/fixture", json=fixture_payload)
+    assert resp_dev.status_code == 200
+    data = resp_dev.json()
+    assert "run_id" in data
+
+    # Verify poll returns seeded state
+    poll_resp = client.get(f"/api/run/{data['run_id']}")
+    assert poll_resp.status_code == 200
+    poll_data = poll_resp.json()
+    assert poll_data["verdict"] == "REJECT"
+    assert poll_data["blocker_count"] == 2
+

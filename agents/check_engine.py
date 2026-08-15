@@ -226,6 +226,7 @@ def evaluate_master_against_spec(master: Dict[str, Any], spec: Dict[str, Any]) -
                         "language": lang,
                         "loudness_lufs": loudness,
                         "target_lufs": target,
+                        "tolerance_lu": tolerance,
                         "loudness_deviation_lufs": round(diff, 1),
                     })
                     if not res["passed"]:

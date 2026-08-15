@@ -288,13 +288,16 @@ def _run_pipeline(run_id: str, master_path: str) -> None:
                 tool_logs = report.get("adk_result", {}).get("tool_logs", []) if isinstance(report.get("adk_result"), dict) else []
                 _runs[run_id]["ledger"] = _build_ledger_entries(tool_logs)
 
+            evaluations = report.get("evaluations", [])
             _runs[run_id].update({
                 "status": "done",
                 "verdict": report.get("verdict", "UNKNOWN"),
                 "blocker_count": report.get("blocker_count", 0),
                 "warning_count": report.get("warning_count", 0),
                 "master_id": report.get("master_id", ""),
+                "spec_id": report.get("spec_id", ""),
                 "findings": list(findings),
+                "evaluations": list(evaluations),
                 "readiness": dict(readiness) if isinstance(readiness, dict) else {},
                 "india_mode": india_mode,
                 "error": adk_error,
@@ -340,6 +343,42 @@ async def index(request: Request) -> HTMLResponse:
         name="index.html",
         context={"masters": masters},
     )
+
+
+@app.post("/api/fixture")
+async def load_fixture(request: Request) -> JSONResponse:
+    """
+    DEV ONLY — Seeds a pre-computed check-engine state into the run store.
+
+    Accepts a JSON body matching the check-engine report structure plus an
+    optional 'master' key (file basename). Returns a run_id that can be
+    polled via /api/run/{run_id}. Does NOT start the pipeline or make any
+    Vertex AI or Grafana calls.
+
+    Gated by CONSOLE_DEV_FIXTURES=1 environment variable.
+    """
+    if os.environ.get("CONSOLE_DEV_FIXTURES") != "1":
+        raise HTTPException(status_code=404, detail="Not found")
+
+    body = await request.json()
+    run_id = str(uuid.uuid4())
+    state = {
+        "status": body.get("status", "done"),
+        "verdict": body.get("verdict", "UNKNOWN"),
+        "blocker_count": body.get("blocker_count", 0),
+        "warning_count": body.get("warning_count", 0),
+        "master_id": body.get("master_id", body.get("master", "")),
+        "spec_id": body.get("spec_id", ""),
+        "findings": list(body.get("findings", [])),
+        "evaluations": list(body.get("evaluations", [])),
+        "readiness": dict(body.get("readiness", {})),
+        "india_mode": body.get("india_mode"),
+        "ledger": list(body.get("ledger", [])),
+        "error": body.get("error"),
+    }
+    with _runs_lock:
+        _runs[run_id] = state
+    return JSONResponse({"run_id": run_id})
 
 
 @app.get("/api/masters")
@@ -399,8 +438,10 @@ async def start_run(request: Request) -> JSONResponse:
             "verdict": None,
             "blocker_count": 0,
             "warning_count": 0,
-            "master_id": "",
+            "master_id": master_name,
+            "spec_id": "",
             "findings": [],
+            "evaluations": [],
             "readiness": {},
             "india_mode": None,
             "ledger": [],
@@ -421,6 +462,7 @@ async def poll_run(run_id: str) -> JSONResponse:
         state_copy = dict(state)
         state_copy["ledger"] = list(state.get("ledger", []))
         state_copy["findings"] = list(state.get("findings", []))
+        state_copy["evaluations"] = list(state.get("evaluations", []))
     return JSONResponse(state_copy)
 
 

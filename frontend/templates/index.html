@@ -440,17 +440,300 @@
       font-style: italic;
       border-bottom: 1px solid var(--border);
     }
+
+    /* =========================================================
+       QC SLATE
+       ========================================================= */
+    .qc-slate {
+      background: var(--bg-panel);
+      border: 1px solid var(--border-light);
+      margin-bottom: var(--space-lg);
+      border-radius: 2px;
+    }
+
+    .slate-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: var(--space-xs) var(--space-md);
+      background: var(--bg-row-alt);
+      border-bottom: 1px solid var(--border);
+    }
+
+    .slate-title {
+      font-family: var(--mono);
+      font-size: 14px;
+      font-weight: 700;
+      letter-spacing: 0.12em;
+      color: var(--text-muted);
+      text-transform: uppercase;
+    }
+
+    .slate-badge {
+      font-family: var(--mono);
+      font-size: 14px;
+      color: var(--text-dim);
+      letter-spacing: 0.08em;
+    }
+
+    .slate-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 1px;
+      background: var(--border);
+    }
+
+    .slate-cell {
+      background: var(--bg-panel);
+      padding: var(--space-sm) var(--space-md);
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+
+    .slate-cell-tc {
+      background: #14181f;
+    }
+
+    .slate-label {
+      font-family: var(--mono);
+      font-size: 14px;
+      color: var(--text-dim);
+      letter-spacing: 0.08em;
+    }
+
+    .slate-val {
+      font-size: 15px;
+      font-weight: 600;
+      color: var(--text-primary);
+      word-break: break-all;
+    }
+
+    .tc-display {
+      font-size: 20px;
+      font-weight: 700;
+      color: var(--warn);
+      letter-spacing: 0.05em;
+    }
+
+    /* =========================================================
+       VERDICT STAMP ANIMATION
+       ========================================================= */
+    @keyframes verdict-stamp {
+      0% {
+        transform: scale(1.4) rotate(-2deg);
+        opacity: 0.2;
+      }
+      60% {
+        transform: scale(0.95) rotate(0deg);
+        opacity: 1;
+      }
+      100% {
+        transform: scale(1.0) rotate(0deg);
+        opacity: 1;
+      }
+    }
+
+    .verdict-stamp-in {
+      animation: verdict-stamp 0.28s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+    }
+
+    /* =========================================================
+       EBU TECH 3341 AUDIO METERS
+       ========================================================= */
+    .meter-grid {
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-md);
+      padding: var(--space-md) 0;
+    }
+
+    .meter-track-row {
+      background: var(--bg-panel);
+      border: 1px solid var(--border);
+      padding: var(--space-md);
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-sm);
+    }
+
+    .meter-track-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+    }
+
+    .meter-track-title {
+      font-family: var(--mono);
+      font-size: 14px;
+      font-weight: 700;
+      color: var(--text-primary);
+    }
+
+    .meter-track-readouts {
+      display: flex;
+      gap: var(--space-md);
+      font-family: var(--mono);
+      font-size: 14px;
+    }
+
+    .readout-item {
+      display: flex;
+      gap: 6px;
+    }
+
+    .readout-label {
+      color: var(--text-dim);
+    }
+
+    .readout-val {
+      font-weight: 700;
+    }
+
+    .readout-pass { color: var(--pass); }
+    .readout-fail { color: var(--reject); }
+
+    .meter-bar-block {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .meter-bar-header {
+      display: flex;
+      justify-content: space-between;
+      font-family: var(--mono);
+      font-size: 14px;
+      color: var(--text-dim);
+    }
+
+    .scale-track-container {
+      position: relative;
+      height: 28px;
+      background: #0d0e12;
+      border: 1px solid var(--border-light);
+      overflow: hidden;
+    }
+
+    .tolerance-band {
+      position: absolute;
+      top: 0;
+      bottom: 0;
+      background: rgba(115, 191, 105, 0.15);
+      border-left: 1px dashed rgba(115, 191, 105, 0.5);
+      border-right: 1px dashed rgba(115, 191, 105, 0.5);
+    }
+
+    .target-center-line {
+      position: absolute;
+      top: 0;
+      bottom: 0;
+      width: 2px;
+      background: var(--pass);
+      opacity: 0.8;
+      z-index: 2;
+    }
+
+    .loudness-marker {
+      position: absolute;
+      top: 2px;
+      bottom: 2px;
+      width: 6px;
+      transform: translateX(-50%);
+      border-radius: 1px;
+      z-index: 3;
+      transition: left 0.4s ease-out;
+    }
+
+    .loudness-marker-pass { background: var(--pass); box-shadow: 0 0 4px var(--pass); }
+    .loudness-marker-fail { background: var(--reject); box-shadow: 0 0 4px var(--reject); }
+
+    .scale-ticks {
+      position: relative;
+      height: 18px;
+      font-family: var(--mono);
+      font-size: 14px;
+      color: var(--text-dim);
+      margin-top: 2px;
+    }
+
+    .tick-mark {
+      position: absolute;
+      transform: translateX(-50%);
+      top: 1px;
+      white-space: nowrap;
+    }
+
+    .tick-mark:first-child {
+      transform: translateX(0%);
+    }
+
+    .tick-mark:last-child {
+      transform: translateX(-100%);
+    }
+
+    .true-peak-track {
+      position: relative;
+      height: 20px;
+      background: #0d0e12;
+      border: 1px solid var(--border-light);
+      overflow: hidden;
+    }
+
+    .true-peak-fill {
+      position: absolute;
+      top: 0;
+      bottom: 0;
+      left: 0;
+      transition: width 0.4s ease-out;
+    }
+
+    .true-peak-pass { background: var(--pass); }
+    .true-peak-fail { background: var(--reject); }
+
+    .ceiling-line {
+      position: absolute;
+      top: 0;
+      bottom: 0;
+      width: 2px;
+      background: var(--warn);
+      z-index: 2;
+    }
   </style>
 </head>
 
 <body>
   <div class="page">
 
-    <!-- ── PAGE HEADER ─────────────────────────────────────────── -->
-    <header class="page-header">
-      <span class="page-title">FIRST PASS · Operator Console</span>
-      <span class="page-subtitle">StreamOne Delivery QC — Master evaluation against platform specification</span>
-    </header>
+    <!-- ── DELIVERY QC SLATE ────────────────────────────────────── -->
+    <div class="qc-slate" aria-label="Delivery QC Slate">
+      <div class="slate-header">
+        <span class="slate-title">DELIVERY QC SLATE · STREAMONE</span>
+        <span class="slate-badge">EBU TECH 3341</span>
+      </div>
+      <div class="slate-grid">
+        <div class="slate-cell">
+          <span class="slate-label">MASTER ID</span>
+          <span id="slate-master" class="slate-val mono">—</span>
+        </div>
+        <div class="slate-cell">
+          <span class="slate-label">SPEC ID</span>
+          <span id="slate-spec" class="slate-val mono">streamone-delivery-spec-2026.1</span>
+        </div>
+        <div class="slate-cell">
+          <span class="slate-label">LANGUAGES</span>
+          <span id="slate-langs" class="slate-val mono">—</span>
+        </div>
+        <div class="slate-cell">
+          <span class="slate-label">RUN DATE (UTC)</span>
+          <span id="slate-date" class="slate-val mono">—</span>
+        </div>
+        <div class="slate-cell slate-cell-tc">
+          <span class="slate-label">ELAPSED TC (24 FPS)</span>
+          <span id="slate-tc" class="slate-val mono tabular tc-display">00:00:00:00</span>
+        </div>
+      </div>
+    </div>
 
     <!-- ── TRIGGER PANEL ────────────────────────────────────────── -->
     <div class="trigger-panel">
@@ -462,7 +745,6 @@
       </select>
 
       <button id="run-btn" type="button" aria-label="Run QC pipeline">
-        <span id="spinner" aria-hidden="true"></span>
         RUN
       </button>
 
@@ -484,10 +766,22 @@
       </div>
     </section>
 
-    <!-- ── § 2  FIX LIST ────────────────────────────────────────── -->
+    <!-- ── § 2  AUDIO LOUDNESS & TRUE PEAK ─────────────────────── -->
+    <section class="section" aria-label="Audio loudness and true peak">
+      <div class="section-header">
+        <span class="section-title">§ 2 · Audio Loudness &amp; True Peak (EBU Tech 3341)</span>
+      </div>
+
+      <div id="meter-container">
+        <div id="meter-empty" class="empty-state">No audio metrics yet. Run the pipeline to populate.</div>
+        <div id="meter-grid" class="meter-grid"></div>
+      </div>
+    </section>
+
+    <!-- ── § 3  FIX LIST ────────────────────────────────────────── -->
     <section class="section" aria-label="Fix list">
       <div class="section-header">
-        <span class="section-title">§ 2 · Fix List — Spec Non-Conformances</span>
+        <span class="section-title">§ 3 · Fix List — Spec Non-Conformances</span>
       </div>
 
       <table class="data-table" id="fix-list" aria-label="Fix list">
@@ -506,10 +800,10 @@
       <div id="fix-empty" class="empty-state">No findings yet. Run the pipeline to populate.</div>
     </section>
 
-    <!-- ── § 3  READINESS GRID ──────────────────────────────────── -->
+    <!-- ── § 4  READINESS GRID ──────────────────────────────────── -->
     <section class="section" aria-label="Language readiness">
       <div class="section-header">
-        <span class="section-title">§ 3 · Per-Language Readiness</span>
+        <span class="section-title">§ 4 · Per-Language Readiness</span>
       </div>
 
       <table class="data-table" aria-label="Per-language readiness">
@@ -526,10 +820,10 @@
       </table>
     </section>
 
-    <!-- ── § 4  ACTION LEDGER ───────────────────────────────────── -->
+    <!-- ── § 5  ACTION LEDGER ───────────────────────────────────── -->
     <section class="section" aria-label="Action ledger">
       <div class="section-header">
-        <span class="section-title">§ 4 · Action Ledger — MCP Writes</span>
+        <span class="section-title">§ 5 · Action Ledger — MCP Writes</span>
       </div>
 
       <table class="data-table" aria-label="Action ledger">
