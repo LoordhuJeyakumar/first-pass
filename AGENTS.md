@@ -19,10 +19,10 @@
 ## Repository Structure
 
 ```
-agents/      ADK agents (orchestrator, interpreter, analysts, actuator, remediation)
+agents/      FirstPassOrchestrator ADK agent and deterministic check engine
 mcp/         Docker compose and deployment config for mcp-grafana
 data/        Synthetic master metadata (masters/*.json) and spec definitions (specs/*.json)
-frontend/    Operator web console (FastAPI / HTML / JS)
+frontend/    Operator web console (FastAPI / HTML / JS) (Planned)
 scripts/     Verification scripts and disclosure checks
 tests/       pytest test suite for deterministic check engine and telemetry emitters
 docs/        Public documentation (README.md, ARCHITECTURE.md, DOMAIN.md, DISCLOSURE.md)
@@ -51,7 +51,7 @@ Format: `<type>(<scope>): <description>`
 **Body — Verified section (required when Definition of Done point 3 applies):** the body must include a `Verified:` line recording the observable outcome you personally saw, not an inference from logs. Use explicit `#NNN` / `N tests` placeholders in example templates, or exact real observed figures in actual commits.
 
 ```
-feat(agents): add observability-actuator MCP write calls
+feat(agents): add MCP write calls for incident and alert management
 
 Implement create_incident, create_annotation, and alerting_manage_rules
 calls triggered when the check engine returns blocker findings.

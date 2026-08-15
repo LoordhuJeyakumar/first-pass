@@ -38,3 +38,10 @@ docs/internal/
 
 # Per-project local agent notes — machine-local, never shared
 *.local.md
+
+# Scratch directory for local temporary agent files
+scratch/
+
+# Local agent skills (dev tooling, not project content)
+.agents/skills/
+

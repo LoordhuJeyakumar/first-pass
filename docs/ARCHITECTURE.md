@@ -1,6 +1,6 @@
 # Architecture
 
-This document describes the architectural design of First Pass, detailing how the single bounded agent system operates, integrates with Grafana Cloud via the Model Context Protocol (MCP), relies on a deterministic check engine, and maps to the planned multi-agent roadmap.
+This document describes the architectural design of First Pass, detailing how the single bounded agent system operates, integrates with Grafana Cloud via the Model Context Protocol (MCP), relies on a deterministic check engine, and defines system scope.
 
 ## The Operational Mapping
 
@@ -49,7 +49,7 @@ Building on Grafana Cloud provides unified metrics, structured logs, incidents, 
 └──────────────────────────┬─────────────────────────────┘
                            ▼
 ┌────────────────────────────────────────────────────────┐
-│ Operator Console (Cloud Run) (Planned)                 │
+│ Operator Console (GCE VM) (Planned)                    │
 │  (Verdict Banner · Clause Breakdown · Action Ledger)   │
 └──────────────────────────┴─────────────────────────────┘
 ```
@@ -66,7 +66,7 @@ Building on Grafana Cloud provides unified metrics, structured logs, incidents, 
 | **Metrics Pipeline** | Prometheus Remote-Write | Ingests numerical QC telemetry (`qc_checks`, `qc_loudness_deviation_lufs`, `qc_blockers_current`) with fixed, low-cardinality label sets. |
 | **Logs Pipeline** | Loki Push API | Ingests structured JSON log lines per check finding containing high-cardinality metadata (`run_id`, clause details). |
 | **Check Engine** | Pure, deterministic Python | Ensures all numerical calculations and spec evaluations are reproducible prior to LLM invocation. |
-| **Hosting (Planned)** | Cloud Run & Secret Manager | Planned containerized deployment for agent service and web console with secure secret management. |
+| **Hosting (Planned)** | GCE VM & Secret Manager | Containerized deployment for agent service, MCP server, and web console on a GCE VM with secure secret management. |
 
 ## The Unattended Authentication Architecture
 
@@ -106,18 +106,9 @@ To guarantee alert rule idempotency without handing complex list-then-branch con
 
 **Architectural Rationale**: The deterministic engine computes, Python resolves pre-query idempotency, the single bounded agent acts through a small allowlisted MCP tool surface, and every write is audited. A small, verified system is more defensible, auditable, and reliable than an unconstrained crew.
 
-## Planned Architecture: Multi-Agent Crew Roadmap
+## Planned Architecture: System Scope & Agent Design
 
-In future iterations, the single orchestrator will be expanded into a multi-agent network where specialized sub-agents will handle distinct responsibilities:
-
-| Agent (Planned) | Input | Output | Planned Tool Usage / Action |
-|---|---|---|---|
-| **Orchestrator** | Master JSON + Spec JSON | Execution plan & overall verdict | Sub-agent routing and state delegation. |
-| **Spec-Interpreter** | Spec Document | Machine-readable constraint set | Gemini reasoning (results cached to JSON). |
-| **QC-Analyst** | Master Metadata + Constraints | Finding objects + Telemetry | Coordinate check engine execution and telemetry streaming. |
-| **Observability-Actuator** | Finding Objects | Dashboards, Alert Rules, Incidents | MCP write tools (`update_dashboard`, `alerting_manage_rules`, `create_incident`, `create_annotation`). |
-| **Remediation** | Finding Objects | Ranked human-readable fix plan | MCP activity tool (`add_activity_to_incident`). |
-| **Release-Coordinator** | Language Matrix + CBFC Status | Per-language readiness tracking | Telemetry emission & readiness dashboard updates. |
+Agent count is deliberately one. It would change only if First Pass ingested third-party delivery specifications it did not author — unknown document structure is the one input class requiring model reasoning rather than deterministic parsing. No such requirement exists in the current scope.
 
 ## Deterministic Computation Principle
 
