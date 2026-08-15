@@ -506,7 +506,13 @@
       font-size: 15px;
       font-weight: 600;
       color: var(--text-primary);
-      word-break: break-all;
+      overflow-wrap: break-word;
+      word-break: normal;
+    }
+
+    #slate-langs {
+      overflow-wrap: break-word;
+      word-break: normal;
     }
 
     .tc-display {
@@ -544,8 +550,8 @@
     .meter-grid {
       display: flex;
       flex-direction: column;
-      gap: var(--space-md);
-      padding: var(--space-md) 0;
+      gap: 0;
+      padding: var(--space-sm) 0;
     }
 
     .meter-track-row {
@@ -609,7 +615,7 @@
 
     .scale-track-container {
       position: relative;
-      height: 28px;
+      height: 18px;
       background: #0d0e12;
       border: 1px solid var(--border-light);
       overflow: hidden;
@@ -636,17 +642,46 @@
 
     .loudness-marker {
       position: absolute;
-      top: 2px;
-      bottom: 2px;
-      width: 6px;
+      top: 1px;
+      bottom: 1px;
+      width: 5px;
       transform: translateX(-50%);
       border-radius: 1px;
       z-index: 3;
       transition: left 0.4s ease-out;
     }
 
-    .loudness-marker-pass { background: var(--pass); box-shadow: 0 0 4px var(--pass); }
-    .loudness-marker-fail { background: var(--reject); box-shadow: 0 0 4px var(--reject); }
+    .loudness-marker-pass { background: var(--pass); }
+    .loudness-marker-fail { background: var(--reject); }
+
+    .meter-offscale {
+      position: absolute;
+      top: 0;
+      bottom: 0;
+      width: 10px;
+      z-index: 4;
+      pointer-events: none;
+    }
+    .meter-offscale-low { left: 0; border-left: 3px solid var(--warn); }
+    .meter-offscale-high { right: 0; border-right: 3px solid var(--warn); }
+    .meter-offscale::after {
+      content: "";
+      position: absolute;
+      top: 50%;
+      width: 0;
+      height: 0;
+      border-top: 5px solid transparent;
+      border-bottom: 5px solid transparent;
+      transform: translateY(-50%);
+    }
+    .meter-offscale-low::after {
+      left: 4px;
+      border-right: 6px solid var(--warn);
+    }
+    .meter-offscale-high::after {
+      right: 4px;
+      border-left: 6px solid var(--warn);
+    }
 
     .scale-ticks {
       position: relative;
@@ -655,6 +690,7 @@
       font-size: 14px;
       color: var(--text-dim);
       margin-top: 2px;
+      overflow: visible;
     }
 
     .tick-mark {
@@ -664,32 +700,13 @@
       white-space: nowrap;
     }
 
-    .tick-mark:first-child {
-      transform: translateX(0%);
-    }
-
-    .tick-mark:last-child {
-      transform: translateX(-100%);
-    }
-
     .true-peak-track {
       position: relative;
-      height: 20px;
+      height: 18px;
       background: #0d0e12;
       border: 1px solid var(--border-light);
       overflow: hidden;
     }
-
-    .true-peak-fill {
-      position: absolute;
-      top: 0;
-      bottom: 0;
-      left: 0;
-      transition: width 0.4s ease-out;
-    }
-
-    .true-peak-pass { background: var(--pass); }
-    .true-peak-fail { background: var(--reject); }
 
     .ceiling-line {
       position: absolute;
@@ -698,6 +715,39 @@
       width: 2px;
       background: var(--warn);
       z-index: 2;
+    }
+
+    .meter-axis-caption {
+      font-family: var(--mono);
+      font-size: 14px;
+      color: var(--text-dim);
+      margin: 0 0 2px 0;
+    }
+
+    .meter-axis-caption-tp {
+      margin-top: 10px;
+    }
+
+    .shared-lang-row {
+      display: grid;
+      grid-template-columns: 64px 1fr minmax(168px, auto);
+      gap: 8px;
+      align-items: center;
+      min-height: 22px;
+      padding: 1px 0;
+    }
+
+    .shared-lang-row .readout-val {
+      font-family: var(--mono);
+      font-size: 14px;
+      text-align: right;
+      white-space: nowrap;
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .loudness-marker { transition: none; }
+      .ledger-appear { animation: none; }
+      .verdict-stamp-in { animation: none; }
     }
   </style>
 </head>
@@ -718,7 +768,7 @@
         </div>
         <div class="slate-cell">
           <span class="slate-label">SPEC ID</span>
-          <span id="slate-spec" class="slate-val mono">streamone-delivery-spec-2026.1</span>
+          <span id="slate-spec" class="slate-val mono">—</span>
         </div>
         <div class="slate-cell">
           <span class="slate-label">LANGUAGES</span>
@@ -769,7 +819,7 @@
     <!-- ── § 2  AUDIO LOUDNESS & TRUE PEAK ─────────────────────── -->
     <section class="section" aria-label="Audio loudness and true peak">
       <div class="section-header">
-        <span class="section-title">§ 2 · Audio Loudness &amp; True Peak (EBU Tech 3341)</span>
+        <span class="section-title" id="meter-section-title">§ 2 · Audio Loudness &amp; True Peak (EBU Tech 3341)</span>
       </div>
 
       <div id="meter-container">

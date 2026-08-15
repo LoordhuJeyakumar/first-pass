@@ -5,7 +5,7 @@
  *   - POST /api/run when the operator clicks RUN.
  *   - Drive 24 FPS frame-accurate timecode on the QC slate via requestAnimationFrame.
  *   - Poll GET /api/run/{run_id} every 1.5 s until status is done/failed.
- *   - Render relative LU audio loudness meters (-18 LU to +9 LU) and True Peak bars per EBU Tech 3341.
+ *   - Render shared-axis relative LU (−4…+4) and True Peak (−6…0 dBTP) meters.
  *   - Append ledger rows incrementally (only newly-received entries).
  *   - Trigger single-impact verdict stamp animation on run completion.
  */
@@ -32,7 +32,7 @@ let elLedgerBody, elLedgerEmpty;
 let elRunBtn, elMasterSelect, elStatus;
 let elReadinessBody;
 let elSlateMaster, elSlateSpec, elSlateLangs, elSlateDate, elSlateTc;
-let elMeterGrid, elMeterEmpty;
+let elMeterGrid, elMeterEmpty, elMeterSectionTitle;
 
 // ---------------------------------------------------------------------------
 // Entry point
@@ -61,9 +61,12 @@ document.addEventListener("DOMContentLoaded", () => {
 
   elMeterGrid     = document.getElementById("meter-grid");
   elMeterEmpty    = document.getElementById("meter-empty");
+  elMeterSectionTitle = document.getElementById("meter-section-title");
 
   if (elRunBtn) elRunBtn.addEventListener("click", handleRunClick);
-  if (elSlateDate) elSlateDate.textContent = new Date().toISOString().slice(0, 10);
+
+  const fixtureRun = new URLSearchParams(window.location.search).get("run");
+  if (fixtureRun) applyRemoteRun(fixtureRun);
 });
 
 // ---------------------------------------------------------------------------
@@ -199,9 +202,42 @@ function stopPolling() {
 // QC Slate Metadata
 // ---------------------------------------------------------------------------
 
+async function applyRemoteRun(runId) {
+  let response;
+  try {
+    response = await fetch(`/api/run/${runId}`);
+  } catch (err) {
+    setStatus(`Fixture fetch failed: ${err.message}`, "error");
+    return;
+  }
+  if (!response.ok) {
+    setStatus(`Fixture run not found (${response.status}).`, "error");
+    return;
+  }
+  const state = await response.json();
+  activeRunId = runId;
+  renderedLedgerCount = 0;
+  appendNewLedgerRows(state.ledger || []);
+  updateSlate(state);
+  if (state.status === "done" || state.evaluations) {
+    renderVerdict(state);
+    renderAudioMeters(state.evaluations || []);
+    renderFixList(state.findings || [], state);
+    renderReadiness(state.readiness || {});
+    setStatus("Fixture loaded.", "info");
+  }
+}
+
 function updateSlate(state) {
   if (elSlateMaster && state.master_id) elSlateMaster.textContent = state.master_id;
-  if (elSlateSpec && state.spec_id) elSlateSpec.textContent = state.spec_id;
+  if (elSlateSpec) {
+    elSlateSpec.textContent = state.spec_id ? state.spec_id : "—";
+  }
+  if (elSlateDate) {
+    elSlateDate.textContent = state.spec_id || state.master_id
+      ? new Date().toISOString().slice(0, 10)
+      : "—";
+  }
 
   let langsList = [];
   if (state.readiness && Object.keys(state.readiness).length > 0) {
@@ -246,18 +282,33 @@ function renderVerdict(state) {
 // EBU Tech 3341 Audio Meters (Relative LU & True Peak dBTP)
 // ---------------------------------------------------------------------------
 
-function renderAudioMeters(evaluations) {
-  if (!elMeterGrid || !elMeterEmpty) return;
-  elMeterGrid.innerHTML = "";
+const LU_MIN = -4.0;
+const LU_MAX = 4.0;
+const TP_MIN = -6.0;
+const TP_MAX = 0.0;
 
+function mapToPct(value, min, max) {
+  const span = max - min;
+  const raw = ((value - min) / span) * 100;
+  const off = raw < 0 ? "low" : raw > 100 ? "high" : null;
+  return { pct: Math.max(0, Math.min(100, raw)), off: off };
+}
+
+function offScaleHtml(off) {
+  if (!off) return "";
+  return `<div class="meter-offscale meter-offscale-${off}" title="off-scale"></div>`;
+}
+
+function ticksHtml(values, min, max, unit) {
+  return values.map((v) => {
+    const pct = ((v - min) / (max - min)) * 100;
+    const label = (v > 0 ? "+" : "") + v + " " + unit;
+    return `<span class="tick-mark" style="left:${pct.toFixed(2)}%">${esc(label)}</span>`;
+  }).join("");
+}
+
+function collectTracks(evaluations) {
   const audioEvals = (evaluations || []).filter((e) => e.domain === "audio");
-  if (!audioEvals.length) {
-    elMeterEmpty.style.display = "";
-    return;
-  }
-  elMeterEmpty.style.display = "none";
-
-  // Group by language
   const langsMap = {};
   audioEvals.forEach((e) => {
     const lang = e.language || "unknown";
@@ -265,103 +316,123 @@ function renderAudioMeters(evaluations) {
     if (e.clause_id === "A-2.1") langsMap[lang].loudness = e;
     if (e.clause_id === "A-2.2") langsMap[lang].true_peak = e;
   });
-
   const langs = Object.keys(langsMap).sort();
-  langs.forEach((lang) => {
-    const data = langsMap[lang];
-    const loud = data.loudness || {};
-    const peak = data.true_peak || {};
-
-    const targetLufs = loud.target_lufs !== undefined ? loud.target_lufs : -27.0;
-    const tolLu = loud.tolerance_lu !== undefined ? loud.tolerance_lu : 2.0;
-    const deviationLu = loud.loudness_deviation_lufs !== undefined ? loud.loudness_deviation_lufs : 0.0;
-    const loudnessLufs = loud.loudness_lufs !== undefined ? loud.loudness_lufs : targetLufs;
-
-    const tpDbtp = peak.true_peak_dbtp !== undefined ? peak.true_peak_dbtp : -2.0;
-    const targetMaxDbtp = peak.target_max_dbtp !== undefined ? peak.target_max_dbtp : -2.0;
-
-    // Loudness check: passes if |deviation| <= tolerance_lu
-    const loudPass = Math.abs(deviationLu) <= tolLu;
-    // True Peak check: passes if tpDbtp <= targetMaxDbtp (Boundary: -2.0 <= -2.0 is PASS)
-    const tpPass = tpDbtp <= targetMaxDbtp;
-
-    const devSign = deviationLu > 0 ? "+" : "";
-    const loudReadout = `${loudnessLufs.toFixed(1)} LUFS (${devSign}${deviationLu.toFixed(1)} LU)`;
-    const tpReadout = `${tpDbtp.toFixed(1)} dBTP`;
-
-    // Proportions for Relative LU scale (-18.0 LU to +9.0 LU, span = 27.0 LU)
-    const luMarkerPct = Math.max(0, Math.min(100, ((deviationLu - (-18.0)) / 27.0) * 100));
-    const tolLeftPct = Math.max(0, (((0 - tolLu) - (-18.0)) / 27.0) * 100);
-    const tolRightPct = Math.min(100, (((0 + tolLu) - (-18.0)) / 27.0) * 100);
-    const tolWidthPct = tolRightPct - tolLeftPct;
-    const zeroPct = ((0 - (-18.0)) / 27.0) * 100;
-
-    // Proportions for True Peak scale (-18.0 dBTP to +3.0 dBTP, span = 21.0 dBTP)
-    const tpFillPct = Math.max(0, Math.min(100, ((tpDbtp - (-18.0)) / 21.0) * 100));
-    const ceilingPct = Math.max(0, Math.min(100, ((targetMaxDbtp - (-18.0)) / 21.0) * 100));
-
-    const row = document.createElement("div");
-    row.className = "meter-track-row";
-    row.innerHTML = `
-      <div class="meter-track-header">
-        <span class="meter-track-title">${esc(lang)}</span>
-        <div class="meter-track-readouts">
-          <div class="readout-item">
-            <span class="readout-label">LOUDNESS:</span>
-            <span class="readout-val ${loudPass ? 'readout-pass' : 'readout-fail'}">${esc(loudReadout)}</span>
-          </div>
-          <div class="readout-item">
-            <span class="readout-label">TRUE PEAK:</span>
-            <span class="readout-val ${tpPass ? 'readout-pass' : 'readout-fail'}">${esc(tpReadout)}</span>
-          </div>
-        </div>
-      </div>
-
-      <!-- Relative LU Scale Block -->
-      <div class="meter-bar-block">
-        <div class="meter-bar-header">
-          <span>Integrated Loudness (Relative LU, target ${targetLufs.toFixed(1)} LUFS ± ${tolLu.toFixed(1)} LU)</span>
-          <span>0 LU = ${targetLufs.toFixed(1)} LUFS</span>
-        </div>
-        <div class="scale-track-container" aria-label="${esc(lang)} loudness meter">
-          <div class="tolerance-band" style="left:${tolLeftPct.toFixed(2)}%; width:${tolWidthPct.toFixed(2)}%;"></div>
-          <div class="target-center-line" style="left:${zeroPct.toFixed(2)}%;"></div>
-          <div class="loudness-marker ${loudPass ? 'loudness-marker-pass' : 'loudness-marker-fail'}" style="left:${luMarkerPct.toFixed(2)}%;"></div>
-        </div>
-        <div class="scale-ticks">
-          <span class="tick-mark" style="left:0%">-18 LU</span>
-          <span class="tick-mark" style="left:22.22%">-12 LU</span>
-          <span class="tick-mark" style="left:44.44%">-6 LU</span>
-          <span class="tick-mark" style="left:59.26%">-2 LU</span>
-          <span class="tick-mark" style="left:66.67%">0 LU</span>
-          <span class="tick-mark" style="left:74.07%">+2 LU</span>
-          <span class="tick-mark" style="left:88.89%">+6 LU</span>
-          <span class="tick-mark" style="left:100%">+9 LU</span>
-        </div>
-      </div>
-
-      <!-- True Peak dBTP Bar Block -->
-      <div class="meter-bar-block" style="margin-top:4px;">
-        <div class="meter-bar-header">
-          <span>True Peak (Max ${targetMaxDbtp.toFixed(1)} dBTP limit)</span>
-          <span>Ceiling: ${targetMaxDbtp.toFixed(1)} dBTP</span>
-        </div>
-        <div class="true-peak-track" aria-label="${esc(lang)} true peak meter">
-          <div class="ceiling-line" style="left:${ceilingPct.toFixed(2)}%;"></div>
-          <div class="true-peak-fill ${tpPass ? 'true-peak-pass' : 'true-peak-fail'}" style="width:${tpFillPct.toFixed(2)}%;"></div>
-        </div>
-        <div class="scale-ticks">
-          <span class="tick-mark" style="left:0%">-18 dBTP</span>
-          <span class="tick-mark" style="left:28.57%">-12 dBTP</span>
-          <span class="tick-mark" style="left:57.14%">-6 dBTP</span>
-          <span class="tick-mark" style="left:76.19%">-2 dBTP</span>
-          <span class="tick-mark" style="left:85.71%">0 dBTP</span>
-          <span class="tick-mark" style="left:100%">+3 dBTP</span>
-        </div>
-      </div>
-    `;
-    elMeterGrid.appendChild(row);
+  const tracks = langs.map((lang) => {
+    const loud = langsMap[lang].loudness || {};
+    const peak = langsMap[lang].true_peak || {};
+    const targetLufs = loud.target_lufs;
+    const tolLu = loud.tolerance_lu;
+    const deviationLu = loud.loudness_deviation_lufs;
+    const loudnessLufs = loud.loudness_lufs;
+    const tpDbtp = peak.true_peak_dbtp;
+    const targetMaxDbtp = peak.target_max_dbtp;
+    const loudPass = targetLufs !== undefined && tolLu !== undefined && deviationLu !== undefined
+      ? Math.abs(deviationLu) <= tolLu
+      : !!loud.passed;
+    const tpPass = tpDbtp !== undefined && targetMaxDbtp !== undefined
+      ? tpDbtp <= targetMaxDbtp
+      : !!peak.passed;
+    return {
+      lang, loud, peak, targetLufs, tolLu, deviationLu, loudnessLufs,
+      tpDbtp, targetMaxDbtp, loudPass, tpPass,
+    };
   });
+  return { tracks, langs };
+}
+
+function specFromTracks(tracks) {
+  const withLoud = tracks.find((t) => t.targetLufs !== undefined);
+  const withTp = tracks.find((t) => t.targetMaxDbtp !== undefined);
+  return {
+    targetLufs: withLoud ? withLoud.targetLufs : undefined,
+    tolLu: withLoud ? withLoud.tolLu : undefined,
+    targetMaxDbtp: withTp ? withTp.targetMaxDbtp : undefined,
+  };
+}
+
+function setMeterHeader(spec, rangeNote) {
+  if (!elMeterSectionTitle) return;
+  const parts = ["§ 2 · Audio Loudness & True Peak (EBU Tech 3341)"];
+  if (spec.targetLufs !== undefined && spec.tolLu !== undefined) {
+    parts.push(`0 LU = ${spec.targetLufs.toFixed(1)} LUFS ± ${spec.tolLu.toFixed(1)} LU`);
+  }
+  if (spec.targetMaxDbtp !== undefined) {
+    parts.push(`ceiling ${spec.targetMaxDbtp.toFixed(1)} dBTP`);
+  }
+  if (rangeNote) parts.push(rangeNote);
+  elMeterSectionTitle.textContent = parts.join(" · ");
+}
+
+function luTrackInner(t) {
+  const lu = mapToPct(t.deviationLu, LU_MIN, LU_MAX);
+  const tolLeft = mapToPct(-t.tolLu, LU_MIN, LU_MAX).pct;
+  const tolRight = mapToPct(t.tolLu, LU_MIN, LU_MAX).pct;
+  const zero = mapToPct(0, LU_MIN, LU_MAX).pct;
+  return `
+    <div class="scale-track-container" aria-label="${esc(t.lang)} loudness">
+      <div class="tolerance-band" style="left:${tolLeft.toFixed(2)}%; width:${(tolRight - tolLeft).toFixed(2)}%;"></div>
+      <div class="target-center-line" style="left:${zero.toFixed(2)}%;"></div>
+      <div class="loudness-marker ${t.loudPass ? "loudness-marker-pass" : "loudness-marker-fail"}" style="left:${lu.pct.toFixed(2)}%;"></div>
+      ${offScaleHtml(lu.off)}
+    </div>`;
+}
+
+function tpTrackInner(t) {
+  const tp = mapToPct(t.tpDbtp, TP_MIN, TP_MAX);
+  const ceil = mapToPct(t.targetMaxDbtp, TP_MIN, TP_MAX);
+  return `
+    <div class="true-peak-track" aria-label="${esc(t.lang)} true peak">
+      <div class="ceiling-line" style="left:${ceil.pct.toFixed(2)}%;"></div>
+      <div class="loudness-marker ${t.tpPass ? "loudness-marker-pass" : "loudness-marker-fail"}" style="left:${tp.pct.toFixed(2)}%;"></div>
+      ${offScaleHtml(tp.off)}
+    </div>`;
+}
+
+function fmtDev(dev) {
+  if (dev === undefined) return "—";
+  const sign = dev > 0 ? "+" : "";
+  return `${sign}${dev.toFixed(1)} LU`;
+}
+
+function renderAudioMeters(evaluations) {
+  if (!elMeterGrid || !elMeterEmpty) return;
+  elMeterGrid.innerHTML = "";
+
+  const { tracks } = collectTracks(evaluations);
+  if (!tracks.length) {
+    elMeterEmpty.style.display = "";
+    if (elMeterSectionTitle) {
+      elMeterSectionTitle.textContent = "§ 2 · Audio Loudness & True Peak (EBU Tech 3341)";
+    }
+    return;
+  }
+  elMeterEmpty.style.display = "none";
+  const spec = specFromTracks(tracks);
+  const luRange = `${LU_MIN.toFixed(0)}…+${LU_MAX.toFixed(0)} LU`;
+  const tpRange = `${TP_MIN.toFixed(0)}…${TP_MAX.toFixed(0)} dBTP`;
+  setMeterHeader(spec, `display ${luRange} · ${tpRange}`);
+
+  const luTicks = ticksHtml([-4, -2, 0, 2, 4], LU_MIN, LU_MAX, "LU");
+  const tpTicks = ticksHtml([-6, -4, -2, 0], TP_MIN, TP_MAX, "dBTP");
+  const luRows = tracks.map((t) => `
+    <div class="shared-lang-row">
+      <span class="lang">${esc(t.lang)}</span>
+      ${luTrackInner(t)}
+      <span class="readout-val ${t.loudPass ? "readout-pass" : "readout-fail"} tabular">${esc(t.loudnessLufs.toFixed(1))} LUFS (${esc(fmtDev(t.deviationLu))})</span>
+    </div>`).join("");
+  const tpRows = tracks.map((t) => `
+    <div class="shared-lang-row">
+      <span class="lang">${esc(t.lang)}</span>
+      ${tpTrackInner(t)}
+      <span class="readout-val ${t.tpPass ? "readout-pass" : "readout-fail"} tabular">${esc(t.tpDbtp.toFixed(1))} dBTP</span>
+    </div>`).join("");
+  elMeterGrid.innerHTML = `
+    <div class="meter-axis-caption">Relative LU (${LU_MIN.toFixed(0)} … +${LU_MAX.toFixed(0)})</div>
+    <div class="scale-ticks">${luTicks}</div>
+    ${luRows}
+    <div class="meter-axis-caption meter-axis-caption-tp">True Peak (${TP_MIN.toFixed(0)} … ${TP_MAX.toFixed(0)} dBTP)</div>
+    <div class="scale-ticks">${tpTicks}</div>
+    ${tpRows}`;
 }
 
 // ---------------------------------------------------------------------------
@@ -470,6 +541,9 @@ function resetUI() {
   if (elReadinessBody) elReadinessBody.innerHTML = "";
   if (elMeterGrid) elMeterGrid.innerHTML = "";
   if (elMeterEmpty) elMeterEmpty.style.display = "";
+  if (elMeterSectionTitle) {
+    elMeterSectionTitle.textContent = "§ 2 · Audio Loudness & True Peak (EBU Tech 3341)";
+  }
 }
 
 function setRunning(running) {
