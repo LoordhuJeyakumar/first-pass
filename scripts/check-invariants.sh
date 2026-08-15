@@ -12,7 +12,7 @@ ERRORS=0
 echo "🔍 Running deterministic invariant audit..."
 
 # Check 1: Every non-stdlib package in agents/requirements.txt is imported somewhere in the codebase.
-echo "  [Check 1/14] Verifying all non-stdlib packages in agents/requirements.txt are imported..."
+echo "  [Check 1/16] Verifying all non-stdlib packages in agents/requirements.txt are imported..."
 C1_OUT=$(python3 -c '
 import os, sys, glob, re
 
@@ -77,7 +77,7 @@ else
 fi
 
 # Check 2: At least one accepted Google AI package is imported under agents/
-echo "  [Check 2/14] Verifying accepted Google AI SDK import under agents/..."
+echo "  [Check 2/16] Verifying accepted Google AI SDK import under agents/..."
 C2_OUT=$(python3 -c '
 import glob, sys, re
 
@@ -123,7 +123,7 @@ else
 fi
 
 # Check 3: No import of any denylisted package
-echo "  [Check 3/14] Verifying no denylisted AI orchestration packages are imported..."
+echo "  [Check 3/16] Verifying no denylisted AI orchestration packages are imported..."
 C3_OUT=$(python3 -c '
 import glob, sys, re
 
@@ -156,7 +156,7 @@ else
 fi
 
 # Check 4: agents/check_engine.py imports only from stdlib allowlist
-echo "  [Check 4/14] Verifying agents/check_engine.py stdlib allowlist compliance..."
+echo "  [Check 4/16] Verifying agents/check_engine.py stdlib allowlist compliance..."
 C4_OUT=$(python3 -c '
 import ast, sys
 
@@ -198,7 +198,7 @@ else
 fi
 
 # Check 5: Every file path referenced in README.md and docs/*.md actually exists
-echo "  [Check 5/14] Verifying all file paths referenced in README.md and docs/*.md exist..."
+echo "  [Check 5/16] Verifying all file paths referenced in README.md and docs/*.md exist..."
 C5_OUT=$(python3 -c '
 import glob, re, os, sys
 
@@ -241,7 +241,7 @@ else
 fi
 
 # Check 6: Every environment variable required via os.getenv() appears in .env.example
-echo "  [Check 6/14] Verifying all os.getenv() variables appear in .env.example..."
+echo "  [Check 6/16] Verifying all os.getenv() variables appear in .env.example..."
 C6_OUT=$(python3 -c '
 import glob, re, os, sys
 
@@ -283,7 +283,7 @@ else
 fi
 
 # Check 7: No :latest image tag in any compose file or Dockerfile
-echo "  [Check 7/14] Verifying no :latest image tags in compose files or Dockerfiles..."
+echo "  [Check 7/16] Verifying no :latest image tags in compose files or Dockerfiles..."
 C7_OUT=$(python3 -c '
 import glob, re, sys
 
@@ -315,7 +315,7 @@ else
 fi
 
 # Check 8: Exactly one progress log exists in the tree
-echo "  [Check 8/14] Verifying exactly one progress log exists in tree..."
+echo "  [Check 8/16] Verifying exactly one progress log exists in tree..."
 C8_OUT=$(python3 -c '
 import glob, os, sys
 
@@ -337,7 +337,7 @@ else
 fi
 
 # Check 9: Any HTTP request to the MCP server URL carries an Authorization header
-echo "  [Check 9/14] Verifying MCP HTTP calls carry Authorization header..."
+echo "  [Check 9/16] Verifying MCP HTTP calls carry Authorization header..."
 C9_OUT=$(python3 -c '
 import glob, re, sys
 
@@ -368,7 +368,7 @@ else
 fi
 
 # Check 10: All three masters produce documented verdicts
-echo "  [Check 10/14] Verifying all three master files produce documented verdicts via check engine..."
+echo "  [Check 10/16] Verifying all three master files produce documented verdicts via check engine..."
 C10_OUT=$(python3 -c '
 import json, sys
 from agents.check_engine import evaluate_master_against_spec
@@ -408,7 +408,7 @@ else
 fi
 
 # Check 11: agents/check_engine.py and agents/telemetry.py line coverage floor
-echo "  [Check 11/14] Verifying agents/check_engine.py and agents/telemetry.py test coverage is at 100% floor..."
+echo "  [Check 11/16] Verifying agents/check_engine.py and agents/telemetry.py test coverage is at 100% floor..."
 PYTHON_EXEC=".venv/bin/python"
 
 if ! "$PYTHON_EXEC" -c "import pytest_cov" > /dev/null 2>&1; then
@@ -426,7 +426,7 @@ else
 fi
 
 # Check 12: Verifying no subprocess module usage in agents/orchestrator.py
-echo "  [Check 12/14] Verifying no subprocess module usage in agents/orchestrator.py..."
+echo "  [Check 12/16] Verifying no subprocess module usage in agents/orchestrator.py..."
 C12_OUT=$(python3 -c '
 import ast, sys
 target = "agents/orchestrator.py"
@@ -453,7 +453,7 @@ else
 fi
 
 # Check 13: Every variable declared in .env.example is read somewhere in the codebase or docker configs
-echo "  [Check 13/14] Verifying all .env.example variables are read in codebase or docker configs..."
+echo "  [Check 13/16] Verifying all .env.example variables are read in codebase or docker configs..."
 C13_OUT=$(python3 -c '
 import glob, re, os, sys
 
@@ -513,7 +513,7 @@ else
 fi
 
 # Check 14: Verifying public documentation capability claims against codebase implementation
-echo "  [Check 14/14] Verifying public documentation capability claims against codebase implementation..."
+echo "  [Check 14/16] Verifying public documentation capability claims against codebase implementation..."
 C14_OUT=$(python3 -c '
 import glob, os, sys, re, json, ast
 
@@ -577,9 +577,11 @@ named_sub_agents = [
 
 roadmap_kw = ["planned", "roadmap", "future", "vision", "target", "next", "proposed", "upcoming"]
 
-public_docs = ["README.md"] + [p for p in glob.glob("docs/*.md") if "docs/internal/" not in p]
+public_docs = ["README.md", "AGENTS.md"] + [p for p in glob.glob("docs/*.md") if "docs/internal/" not in p]
 violations = []
 eval_verbs = ["evaluat", "check", "validat", "verif", "measur", "assert", "enforc", "inspect"]
+
+from scripts.doc_conformance import parse_roadmap_heading_states
 
 for doc in public_docs:
     if not os.path.exists(doc):
@@ -587,16 +589,9 @@ for doc in public_docs:
     with open(doc, "r", encoding="utf-8") as f:
         lines = f.readlines()
 
-    in_roadmap = False
-    for line_num, line in enumerate(lines, 1):
-        stripped = line.strip()
-        if stripped.startswith("#"):
-            heading_text = stripped.lstrip("#").strip().lower()
-            if any(k in heading_text for k in ["planned", "roadmap", "future"]):
-                in_roadmap = True
-            else:
-                in_roadmap = False
+    roadmap_states = parse_roadmap_heading_states(lines)
 
+    for line_num, (line, in_roadmap) in enumerate(zip(lines, roadmap_states), 1):
         if in_roadmap:
             continue
 
@@ -638,6 +633,47 @@ else
   ERRORS=$((ERRORS + 1))
 fi
 
+# Check 15: Verifying code implementation against spec constraints in AGENTS.md (Spec Conformance)
+echo "  [Check 15/16] Verifying code implementation against spec constraints in AGENTS.md..."
+C15_OUT=$(python3 -c '
+import sys
+from scripts.doc_conformance import check_spec_conformance
+violations = check_spec_conformance()
+if violations:
+    print("SPEC_CONFORMANCE_VIOLATIONS: " + " | ".join(violations))
+    sys.exit(1)
+else:
+    print("OK")
+' 2>&1 || true)
+
+if [[ "$C15_OUT" == "OK" ]]; then
+  echo "  ✅ Check 15 passed: Codebase implements all spec constraints in AGENTS.md."
+else
+  echo "  ❌ ERROR Check 15 failed: $C15_OUT"
+  ERRORS=$((ERRORS + 1))
+fi
+
+# Check 16: Verifying top-level directory claims across public documentation exist on disk
+echo "  [Check 16/16] Verifying top-level directory claims in public documentation exist..."
+C16_OUT=$(python3 -c '
+import sys, glob
+from scripts.doc_conformance import check_directory_claims
+public_docs = ["README.md", "AGENTS.md"] + [p for p in glob.glob("docs/*.md") if "docs/internal/" not in p]
+violations = check_directory_claims(public_docs)
+if violations:
+    print("DIRECTORY_CLAIM_VIOLATIONS: " + " | ".join(violations))
+    sys.exit(1)
+else:
+    print("OK")
+' 2>&1 || true)
+
+if [[ "$C16_OUT" == "OK" ]]; then
+  echo "  ✅ Check 16 passed: All top-level directory references in documentation exist."
+else
+  echo "  ❌ ERROR Check 16 failed: $C16_OUT"
+  ERRORS=$((ERRORS + 1))
+fi
+
 if [[ $ERRORS -eq 0 ]]; then
   echo "✅ All invariant checks passed cleanly."
   exit 0
@@ -645,4 +681,5 @@ else
   echo "❌ Invariant audit failed with $ERRORS error(s)."
   exit 1
 fi
+
 
