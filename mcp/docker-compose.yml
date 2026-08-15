@@ -4,7 +4,7 @@ services:
     container_name: mcp-grafana
     restart: unless-stopped
     ports:
-      - "8000:8000"
+      - "127.0.0.1:8000:8000"
     # Environment variables read directly by mcp-grafana container binary: GRAFANA_URL, GRAFANA_SERVICE_ACCOUNT_TOKEN
     env_file:
       - ../.env
