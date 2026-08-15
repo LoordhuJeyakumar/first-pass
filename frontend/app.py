@@ -69,6 +69,7 @@ logger = logging.getLogger("FirstPassConsole")
 # ---------------------------------------------------------------------------
 
 _run_lock = threading.Lock()
+_runs_lock = threading.Lock()
 _runs: Dict[str, Dict[str, Any]] = {}
 _last_run_at: float = 0.0
 _executor = ThreadPoolExecutor(max_workers=THREAD_POOL_MAX_WORKERS)
@@ -231,6 +232,18 @@ def _tool_entry_to_ledger_row(entry: dict, grafana: str) -> Optional[dict]:
         return _call_to_ledger_row(name, entry.get("args", {}), grafana, timestamp=timestamp)
     elif entry_type == "response":
         return _response_to_ledger_row(name, entry.get("response", {}), grafana, timestamp=timestamp)
+    elif entry_type == "verified_rule":
+        rule_uid = entry.get("rule_uid")
+        title = entry.get("title", "")
+        href = f"{grafana}/alerting/{rule_uid}/view" if rule_uid and grafana else None
+        return {
+            "timestamp": timestamp or _now_iso(),
+            "phase": "verified",
+            "operation": "Verify Alert Rule",
+            "detail": f"Verified rule '{title}' (UID: {rule_uid})" if title else f"Rule UID: {rule_uid}",
+            "href": href,
+            "link_label": "Alert rule",
+        }
     return None
 
 
@@ -255,8 +268,12 @@ def _run_pipeline(run_id: str, master_path: str) -> None:
 
     def _on_tool_event(entry: dict) -> None:
         row = _tool_entry_to_ledger_row(entry, _grafana_base())
-        if row and run_id in _runs:
-            _runs[run_id]["ledger"].append(row)
+        if row:
+            with _runs_lock:
+                if run_id in _runs:
+                    new_ledger = list(_runs[run_id]["ledger"])
+                    new_ledger.append(row)
+                    _runs[run_id]["ledger"] = new_ledger
 
     try:
         report = run_delivery_qc(master_path, SPEC_PATH, on_tool_event=_on_tool_event)
@@ -264,35 +281,39 @@ def _run_pipeline(run_id: str, master_path: str) -> None:
         findings = report.get("findings", [])
         readiness = report.get("readiness", {})
         india_mode = report.get("india_mode")
+        adk_error = report.get("adk_result", {}).get("error") if isinstance(report.get("adk_result"), dict) else None
 
-        if not _runs[run_id]["ledger"]:
-            tool_logs = report.get("adk_result", {}).get("tool_logs", [])
-            _runs[run_id]["ledger"] = _build_ledger_entries(tool_logs)
+        with _runs_lock:
+            if not _runs[run_id]["ledger"]:
+                tool_logs = report.get("adk_result", {}).get("tool_logs", []) if isinstance(report.get("adk_result"), dict) else []
+                _runs[run_id]["ledger"] = _build_ledger_entries(tool_logs)
 
-        _runs[run_id].update({
-            "status": "done",
-            "verdict": report.get("verdict", "UNKNOWN"),
-            "blocker_count": report.get("blocker_count", 0),
-            "warning_count": report.get("warning_count", 0),
-            "master_id": report.get("master_id", ""),
-            "findings": findings,
-            "readiness": readiness,
-            "india_mode": india_mode,
-            "error": None,
-        })
+            _runs[run_id].update({
+                "status": "done",
+                "verdict": report.get("verdict", "UNKNOWN"),
+                "blocker_count": report.get("blocker_count", 0),
+                "warning_count": report.get("warning_count", 0),
+                "master_id": report.get("master_id", ""),
+                "findings": list(findings),
+                "readiness": dict(readiness) if isinstance(readiness, dict) else {},
+                "india_mode": india_mode,
+                "error": adk_error,
+            })
     except Exception as exc:
-        logger.exception("Pipeline run %s failed: %s", run_id, exc)
-        _runs[run_id].update({
-            "status": "failed",
-            "verdict": None,
-            "blocker_count": 0,
-            "warning_count": 0,
-            "master_id": "",
-            "findings": [],
-            "readiness": {},
-            "india_mode": None,
-            "error": str(exc),
-        })
+        logger.exception("Pipeline run %s failed in check engine: %s", run_id, exc)
+        with _runs_lock:
+            if run_id in _runs:
+                _runs[run_id].update({
+                    "status": "failed",
+                    "verdict": None,
+                    "blocker_count": 0,
+                    "warning_count": 0,
+                    "master_id": "",
+                    "findings": [],
+                    "readiness": {},
+                    "india_mode": None,
+                    "error": str(exc),
+                })
     finally:
         _last_run_at = time.time()
         _run_lock.release()
@@ -312,6 +333,7 @@ templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
 
 @app.get("/", response_class=HTMLResponse)
 async def index(request: Request) -> HTMLResponse:
+    """Renders the operator console page."""
     masters = _list_masters()
     return templates.TemplateResponse(
         request=request,
@@ -371,18 +393,19 @@ async def start_run(request: Request) -> JSONResponse:
         )
 
     run_id = str(uuid.uuid4())
-    _runs[run_id] = {
-        "status": "running",
-        "verdict": None,
-        "blocker_count": 0,
-        "warning_count": 0,
-        "master_id": "",
-        "findings": [],
-        "readiness": {},
-        "india_mode": None,
-        "ledger": [],
-        "error": None,
-    }
+    with _runs_lock:
+        _runs[run_id] = {
+            "status": "running",
+            "verdict": None,
+            "blocker_count": 0,
+            "warning_count": 0,
+            "master_id": "",
+            "findings": [],
+            "readiness": {},
+            "india_mode": None,
+            "ledger": [],
+            "error": None,
+        }
 
     _executor.submit(_run_pipeline, run_id, str(master_path))
     return JSONResponse({"run_id": run_id})
@@ -391,10 +414,14 @@ async def start_run(request: Request) -> JSONResponse:
 @app.get("/api/run/{run_id}")
 async def poll_run(run_id: str) -> JSONResponse:
     """Returns the current status and (when done) full result of a run."""
-    state = _runs.get(run_id)
-    if state is None:
-        raise HTTPException(status_code=404, detail=f"Run ID not found: {run_id}")
-    return JSONResponse(state)
+    with _runs_lock:
+        state = _runs.get(run_id)
+        if state is None:
+            raise HTTPException(status_code=404, detail=f"Run ID not found: {run_id}")
+        state_copy = dict(state)
+        state_copy["ledger"] = list(state.get("ledger", []))
+        state_copy["findings"] = list(state.get("findings", []))
+    return JSONResponse(state_copy)
 
 
 # ---------------------------------------------------------------------------

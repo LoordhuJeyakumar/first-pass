@@ -353,3 +353,80 @@ class TestLedgerBuilder:
         ]
         entries = app_mod._build_ledger_entries(tool_logs)
         assert any(e["operation"] == "Open Incident" for e in entries)
+
+
+# ---------------------------------------------------------------------------
+# § Thread safety (concurrency)
+# ---------------------------------------------------------------------------
+
+class TestThreadSafety:
+    def test_concurrent_appends_and_reads_produce_valid_json(self):
+        """
+        Simulate concurrent ledger appends while GET /api/run/{id} polls rapidly.
+        Asserts that every poll response parses as valid JSON with zero control character errors.
+        """
+        import frontend.app as app_mod
+        app_mod = _fresh_app()
+        run_id = "test-concurrent-run-999"
+
+        with app_mod._runs_lock:
+            app_mod._runs[run_id] = {
+                "status": "running",
+                "verdict": None,
+                "blocker_count": 0,
+                "warning_count": 0,
+                "master_id": "STRM-TEST",
+                "findings": [],
+                "readiness": {},
+                "india_mode": None,
+                "ledger": [],
+                "error": None,
+            }
+
+        client = _make_client(app_mod)
+        stop_event = threading.Event()
+        errors = []
+
+        def _writer(writer_id):
+            count = 0
+            while not stop_event.is_set() and count < 100:
+                event_entry = {
+                    "type": "call",
+                    "name": "create_incident",
+                    "args": {"title": f"Concurrent Incident {writer_id}-{count}"},
+                    "timestamp": "12:34:56 UTC",
+                }
+                row = app_mod._tool_entry_to_ledger_row(event_entry, "https://your-stack.grafana.net")
+                if row:
+                    with app_mod._runs_lock:
+                        new_ledger = list(app_mod._runs[run_id]["ledger"])
+                        new_ledger.append(row)
+                        app_mod._runs[run_id]["ledger"] = new_ledger
+                count += 1
+                time.sleep(0.001)
+
+        def _reader():
+            for _ in range(50):
+                resp = client.get(f"/api/run/{run_id}")
+                if resp.status_code != 200:
+                    errors.append(f"HTTP {resp.status_code}: {resp.text}")
+                else:
+                    try:
+                        data = resp.json()
+                        assert "ledger" in data
+                    except Exception as exc:
+                        errors.append(f"JSON decode error: {exc}")
+                time.sleep(0.002)
+
+        writers = [threading.Thread(target=_writer, args=(i,)) for i in range(5)]
+        readers = [threading.Thread(target=_reader) for i in range(10)]
+
+        for t in writers + readers:
+            t.start()
+        for t in readers:
+            t.join()
+        stop_event.set()
+        for t in writers:
+            t.join()
+
+        assert not errors, f"Concurrent thread safety errors: {errors}"

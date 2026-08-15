@@ -1050,14 +1050,25 @@ async def run_adk_orchestration(
         if rule_status == "found":
             logger.info(
                 f"Alert rule '{rule_title}' already exists in Grafana (UID: {existing_rule_uid}). "
-                "Instructing ADK agent to execute alerting_manage_rules with operation: 'update'."
+                "Skipping duplicate 'alerting_manage_rules' write call to prevent provisioning API 409 Conflict."
             )
             alerting_instruction = (
-                f"Call `alerting_manage_rules` with operation: \"update\", uid=\"{existing_rule_uid}\", "
-                f"title=\"{rule_title}\", folder_uid=\"first-pass-qc\", rule_group=\"first-pass-alerts\", "
-                f"condition=\"B\", for=\"1m\", org_id=1, no_data_state=\"OK\", exec_err_state=\"Alerting\", "
-                f"data={json.dumps(alert_rule_data)}"
+                f"Do NOT call `alerting_manage_rules` for this run because alert rule '{rule_title}' "
+                f"already exists in Grafana (UID: {existing_rule_uid})."
             )
+            if on_tool_event and existing_rule_uid:
+                try:
+                    from datetime import datetime, timezone
+                    ts_str = datetime.now(timezone.utc).strftime("%H:%M:%S UTC")
+                    on_tool_event({
+                        "type": "verified_rule",
+                        "name": "alerting_manage_rules",
+                        "rule_uid": existing_rule_uid,
+                        "title": rule_title,
+                        "timestamp": ts_str,
+                    })
+                except Exception as exc:
+                    logger.warning(f"Error emitting verified_rule event: {exc}")
         elif rule_status == "absent":
             alerting_instruction = (
                 f"Call `alerting_manage_rules` with operation: \"create\", "
@@ -1241,8 +1252,16 @@ def run_delivery_qc(
     logger.info(f"QC Run Finished. Verdict: {report['verdict']} (Blockers: {report['blocker_count']})")
 
     logger.info("Triggering Google ADK Orchestrator workflow for folder/dashboard and incident management...")
-    adk_result = asyncio.run(run_adk_orchestration(report, env_cfg, on_tool_event=on_tool_event))
-    report["adk_result"] = adk_result
+    try:
+        adk_result = asyncio.run(run_adk_orchestration(report, env_cfg, on_tool_event=on_tool_event))
+        report["adk_result"] = adk_result
+    except Exception as exc:
+        logger.error(
+            f"ADK Orchestration hit an error ({type(exc).__name__}: {exc}). "
+            "Preserving deterministic QC check engine verdict and report.",
+            exc_info=True,
+        )
+        report["adk_result"] = {"status": "error", "error": str(exc), "tool_logs": []}
 
     return report
 
