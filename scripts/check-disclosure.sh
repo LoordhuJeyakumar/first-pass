@@ -83,6 +83,12 @@ if command -v git &> /dev/null; then
     echo "❌ ERROR: Private key block matched in tracked files!"
     ERRORS=$((ERRORS + 1))
   fi
+
+  # Check for Grafana Cloud stack hostname pattern ([a-z0-9-]+\.grafana\.net) excluding legitimate placeholders
+  if git grep -iE '\b[a-z0-9-]+\.grafana\.net\b' -- ':!scripts/check-disclosure.sh' | grep -ivE '(your-stack|YOUR-REGION|prod-01|us-central1)\.grafana\.net' > /dev/null 2>&1; then
+    echo "❌ ERROR: Real Grafana Cloud stack hostname matched in tracked files!"
+    ERRORS=$((ERRORS + 1))
+  fi
 fi
 
 # Check optional project-specific tripwires if present
