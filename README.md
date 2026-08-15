@@ -11,7 +11,7 @@ First Pass treats delivery readiness as an **observability and automated action 
 - Attaches timeline **annotations** to the delivery readiness dashboard (`create_annotation`).
 - Configures or verifies provisioned **alert rules** for delivery blocker detection (`alerting_manage_rules`).
 
-The operator gets a clear operational answer: **PASS likely** or **REJECT — N blockers**, each traced back to its specific spec clause, supported by a live action ledger of every agent action. For pan-India releases, the deterministic check engine evaluates Central Board of Film Certification (CBFC) regulatory gating dependencies across simultaneous multi-language releases.
+The operator gets a clear operational answer: **PASS** or **REJECT — N blockers**, each traced back to its specific spec clause, with a live action ledger of every agent action linking into Grafana. For pan-India releases, the deterministic check engine evaluates Central Board of Film Certification (CBFC) regulatory gating dependencies across simultaneous multi-language releases.
 
 Built for the **Agentic Cinema Hackathon (Grafana Track)**, 2026.
 
@@ -26,6 +26,25 @@ In brief:
 - **Deterministic Check Engine**: All measurements and clause checks are performed in pure, deterministic Python code. The LLM orchestrates workflows, interprets specs, and executes Grafana write actions, but never invents or calculates numbers.
 
 For an introduction to film delivery QC terminology, see [`docs/DOMAIN.md`](docs/DOMAIN.md).
+
+## Operator Console
+
+A FastAPI + Jinja2 + vanilla JS single-page console in [`frontend/`](frontend/) provides:
+
+- **Verdict banner** — PASS (green) or REJECT — N blockers (red), readable from across a room.
+- **Fix list** — every spec non-conformance with clause ID, severity, measured vs expected, language, and message.
+- **Action ledger** — live log of every MCP write the agent performs, each row linking into Grafana (incident, annotation, alert rule).
+- **Trigger button** — runs the full pipeline on demand against any of the three masters. Judges can click RUN to generate fresh telemetry regardless of the 14-day Grafana retention window.
+
+```bash
+# One-time setup:
+pip install -r frontend/requirements.txt
+
+# Start the console:
+./run_console.sh        # http://localhost:8080
+```
+
+See [`frontend/README.md`](frontend/README.md) for full setup, environment variable reference, and API documentation.
 
 ## Setup & Environment
 

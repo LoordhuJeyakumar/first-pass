@@ -14,7 +14,7 @@ import logging
 import asyncio
 import warnings
 import argparse
-from typing import Dict, Any, List, Tuple, Optional
+from typing import Dict, Any, List, Tuple, Optional, Callable
 
 # Ensure project root is on sys.path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
@@ -465,6 +465,47 @@ def has_function_calls(events: List[Any]) -> bool:
     return False
 
 
+def extract_event_tool_entries(event: Any) -> List[Dict[str, Any]]:
+    """Extracts tool call and response entries from a single ADK event, stamped with wall-clock time."""
+    from datetime import datetime, timezone
+    ts_str = datetime.now(timezone.utc).strftime("%H:%M:%S UTC")
+    entries = []
+
+    calls = []
+    if hasattr(event, "get_function_calls"):
+        try:
+            calls = event.get_function_calls() or []
+        except Exception:
+            pass
+    elif hasattr(event, "content") and getattr(event.content, "parts", None):
+        for part in event.content.parts:
+            if hasattr(part, "function_call") and part.function_call:
+                calls.append(part.function_call)
+
+    for call in calls:
+        name = getattr(call, "name", "unknown")
+        args = getattr(call, "args", {})
+        entries.append({"type": "call", "name": name, "args": args, "timestamp": ts_str})
+
+    responses = []
+    if hasattr(event, "get_function_responses"):
+        try:
+            responses = event.get_function_responses() or []
+        except Exception:
+            pass
+    elif hasattr(event, "content") and getattr(event.content, "parts", None):
+        for part in event.content.parts:
+            if hasattr(part, "function_response") and part.function_response:
+                responses.append(part.function_response)
+
+    for resp in responses:
+        name = getattr(resp, "name", "unknown")
+        response_val = getattr(resp, "response", {})
+        entries.append({"type": "response", "name": name, "response": response_val, "timestamp": ts_str})
+
+    return entries
+
+
 def inspect_and_log_tool_calls(agent_events: List[Any]) -> List[Dict[str, Any]]:
     """
     Explicitly logs all tool calls captured in ADK agent_events:
@@ -473,45 +514,15 @@ def inspect_and_log_tool_calls(agent_events: List[Any]) -> List[Dict[str, Any]]:
     """
     tool_logs = []
     for event in agent_events:
-        # Check function calls
-        calls = []
-        if hasattr(event, "get_function_calls"):
-            try:
-                calls = event.get_function_calls() or []
-            except Exception as exc:
-                logger.error(f"Error calling get_function_calls on event: {exc}", exc_info=True)
-                raise
-        elif hasattr(event, "content") and getattr(event.content, "parts", None):
-            for part in event.content.parts:
-                if hasattr(part, "function_call") and part.function_call:
-                    calls.append(part.function_call)
-
-        for call in calls:
-            name = getattr(call, "name", "unknown")
-            args = getattr(call, "args", {})
-            logger.debug(f"[TOOL CALL RAW] Invoked tool '{name}' with arguments: {json.dumps(args)}")
-            logger.info(summarize_tool_call(name, args))
-            tool_logs.append({"type": "call", "name": name, "args": args})
-
-        # Check function responses
-        responses = []
-        if hasattr(event, "get_function_responses"):
-            try:
-                responses = event.get_function_responses() or []
-            except Exception as exc:
-                logger.error(f"Error calling get_function_responses on event: {exc}", exc_info=True)
-                raise
-        elif hasattr(event, "content") and getattr(event.content, "parts", None):
-            for part in event.content.parts:
-                if hasattr(part, "function_response") and part.function_response:
-                    responses.append(part.function_response)
-
-        for resp in responses:
-            name = getattr(resp, "name", "unknown")
-            response_val = getattr(resp, "response", {})
-            logger.debug(f"[TOOL RESPONSE RAW] Tool '{name}': {json.dumps(response_val)}")
-            logger.info(summarize_tool_response(name, response_val))
-            tool_logs.append({"type": "response", "name": name, "response": response_val})
+        event_entries = extract_event_tool_entries(event)
+        for entry in event_entries:
+            if entry["type"] == "call":
+                logger.debug(f"[TOOL CALL RAW] Invoked tool '{entry['name']}' with arguments: {json.dumps(entry['args'])}")
+                logger.info(summarize_tool_call(entry['name'], entry['args']))
+            elif entry["type"] == "response":
+                logger.debug(f"[TOOL RESPONSE RAW] Tool '{entry['name']}': {json.dumps(entry['response'])}")
+                logger.info(summarize_tool_response(entry['name'], entry['response']))
+            tool_logs.append(entry)
 
     # Audit tool call counts
     incident_calls = [t for t in tool_logs if t["type"] == "call" and t["name"] == "create_incident"]
@@ -662,7 +673,9 @@ def assert_dashboard_metrics_verbatim(
 
 
 async def run_adk_orchestration(
-    report: Dict[str, Any], env_cfg: Dict[str, str]
+    report: Dict[str, Any],
+    env_cfg: Dict[str, str],
+    on_tool_event: Optional[Callable[[Dict[str, Any]], None]] = None,
 ) -> Dict[str, Any]:
     """
     Asynchronously executes the Google ADK Agent workflow to manage dashboards and incidents on Grafana Cloud MCP.
@@ -1037,11 +1050,13 @@ async def run_adk_orchestration(
         if rule_status == "found":
             logger.info(
                 f"Alert rule '{rule_title}' already exists in Grafana (UID: {existing_rule_uid}). "
-                "Skipping 'alerting_manage_rules' call for this run."
+                "Instructing ADK agent to execute alerting_manage_rules with operation: 'update'."
             )
             alerting_instruction = (
-                f"Do NOT call `alerting_manage_rules` for this run because alert rule '{rule_title}' "
-                f"already exists in Grafana (UID: {existing_rule_uid})."
+                f"Call `alerting_manage_rules` with operation: \"update\", uid=\"{existing_rule_uid}\", "
+                f"title=\"{rule_title}\", folder_uid=\"first-pass-qc\", rule_group=\"first-pass-alerts\", "
+                f"condition=\"B\", for=\"1m\", org_id=1, no_data_state=\"OK\", exec_err_state=\"Alerting\", "
+                f"data={json.dumps(alert_rule_data)}"
             )
         elif rule_status == "absent":
             alerting_instruction = (
@@ -1151,6 +1166,12 @@ Please execute the following tool calls in order:
                 ):
                     attempt_events.append(event)
                     logger.debug(f"ADK Event received: {event}")
+                    if on_tool_event:
+                        for entry in extract_event_tool_entries(event):
+                            try:
+                                on_tool_event(entry)
+                            except Exception as exc:
+                                logger.warning(f"Error in on_tool_event callback: {exc}")
             except Exception as exc:
                 if attempt < max_attempts:
                     wait_sec = 60 * attempt
@@ -1194,7 +1215,11 @@ Please execute the following tool calls in order:
         await mcp_toolset.close()
 
 
-def run_delivery_qc(master_path: str, spec_path: str) -> Dict[str, Any]:
+def run_delivery_qc(
+    master_path: str,
+    spec_path: str,
+    on_tool_event: Optional[Callable[[Dict[str, Any]], None]] = None,
+) -> Dict[str, Any]:
     """
     Executes a complete delivery QC evaluation run.
     """
@@ -1216,7 +1241,7 @@ def run_delivery_qc(master_path: str, spec_path: str) -> Dict[str, Any]:
     logger.info(f"QC Run Finished. Verdict: {report['verdict']} (Blockers: {report['blocker_count']})")
 
     logger.info("Triggering Google ADK Orchestrator workflow for folder/dashboard and incident management...")
-    adk_result = asyncio.run(run_adk_orchestration(report, env_cfg))
+    adk_result = asyncio.run(run_adk_orchestration(report, env_cfg, on_tool_event=on_tool_event))
     report["adk_result"] = adk_result
 
     return report

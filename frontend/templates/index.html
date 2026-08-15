@@ -1,0 +1,553 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>First Pass — Operator Console</title>
+  <meta name="description" content="Delivery master quality control operator console. Verdict, fix list, and action ledger.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+
+  <style>
+    /* =========================================================
+       DESIGN TOKENS — Grafana dark palette, no framework
+       ========================================================= */
+    :root {
+      --bg-base:      #111217;
+      --bg-panel:     #181b1f;
+      --bg-row-alt:   #14171b;
+      --border:       #2d2f33;
+      --border-light: #3d4045;
+      --text-primary: #d9d9d9;
+      --text-muted:   #8d9095;
+      --text-dim:     #555b63;
+      --mono:         'JetBrains Mono', 'Fira Mono', 'Consolas', monospace;
+      --font-ui:      'Inter', system-ui, -apple-system, sans-serif;
+      --pass:         #73bf69;
+      --pass-bg:      rgba(115,191,105,0.10);
+      --reject:       #f2495c;
+      --reject-bg:    rgba(242,73,92,0.10);
+      --warn:         #f89b29;
+      --warn-bg:      rgba(248,155,41,0.10);
+      --neutral:      #8d9095;
+      --neutral-bg:   rgba(141,144,149,0.08);
+      --space-xs:     4px;
+      --space-sm:     8px;
+      --space-md:     16px;
+      --space-lg:     24px;
+      --space-xl:     40px;
+    }
+
+    /* =========================================================
+       RESET & BASE
+       ========================================================= */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    html, body {
+      height: 100%;
+      background: var(--bg-base);
+      color: var(--text-primary);
+      font-family: var(--font-ui);
+      font-size: 15px;
+      line-height: 1.5;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    a { color: inherit; }
+    a:focus-visible { outline: 2px solid var(--warn); outline-offset: 2px; }
+
+    /* =========================================================
+       LAYOUT
+       ========================================================= */
+    .page {
+      max-width: 1240px;
+      margin: 0 auto;
+      padding: var(--space-lg) var(--space-md);
+    }
+
+    /* =========================================================
+       PAGE HEADER
+       ========================================================= */
+    .page-header {
+      display: flex;
+      align-items: baseline;
+      gap: var(--space-md);
+      padding-bottom: var(--space-md);
+      border-bottom: 1px solid var(--border);
+      margin-bottom: var(--space-lg);
+    }
+
+    .page-title {
+      font-family: var(--mono);
+      font-size: 14px;
+      font-weight: 700;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--text-muted);
+    }
+
+    .page-subtitle {
+      font-size: 14px;
+      color: var(--text-dim);
+    }
+
+    /* =========================================================
+       TRIGGER PANEL
+       ========================================================= */
+    .trigger-panel {
+      display: flex;
+      align-items: center;
+      gap: var(--space-md);
+      padding: var(--space-md) 0;
+      border-bottom: 1px solid var(--border);
+      margin-bottom: var(--space-lg);
+      flex-wrap: wrap;
+    }
+
+    .trigger-label {
+      font-size: 14px;
+      font-weight: 500;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+    }
+
+    #master-select {
+      font-family: var(--mono);
+      font-size: 14px;
+      background-color: var(--bg-panel);
+      color: var(--text-primary);
+      border: 1px solid var(--border-light);
+      padding: var(--space-xs) var(--space-sm);
+      border-radius: 2px;
+      cursor: pointer;
+      min-width: 240px;
+      appearance: none;
+      -webkit-appearance: none;
+      -moz-appearance: none;
+      background-image: url("data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22292.4%22%20height%3D%22292.4%22%3E%3Cpath%20fill%3D%22%238D9095%22%20d%3D%22M287%2069.4a17.6%2017.6%200%200%200-13-5.4H18.4c-5%200-9.3%201.8-12.9%205.4A17.6%2017.6%200%200%200%200%2082.2c0%205%201.8%209.3%205.4%2012.9l128%20127.9c3.6%203.6%207.8%205.4%2012.8%205.4s9.2-1.8%2012.8-5.4L287%2095c3.5-3.5%205.4-7.8%205.4-12.8%200-5-1.9-9.2-5.5-12.8z%22%2F%3E%3C%2Fsvg%3E");
+      background-repeat: no-repeat;
+      background-position: right 10px center;
+      background-size: 10px;
+      padding-right: 28px;
+    }
+
+    #master-select option {
+      background-color: var(--bg-panel);
+      color: var(--text-primary);
+    }
+
+    #master-select:focus-visible {
+      outline: 2px solid var(--warn);
+      outline-offset: 2px;
+    }
+
+    #run-btn {
+      font-family: var(--font-ui);
+      font-size: 14px;
+      font-weight: 600;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+      background: transparent;
+      color: var(--text-primary);
+      border: 1px solid var(--border-light);
+      padding: var(--space-xs) var(--space-lg);
+      border-radius: 2px;
+      cursor: pointer;
+      transition: border-color 0.15s, color 0.15s;
+      display: flex;
+      align-items: center;
+      gap: var(--space-sm);
+    }
+
+    #run-btn:hover:not(:disabled) {
+      border-color: var(--text-primary);
+      color: #fff;
+    }
+
+    #run-btn:disabled {
+      opacity: 0.45;
+      cursor: not-allowed;
+    }
+
+    #spinner {
+      display: none;
+      width: 14px;
+      height: 14px;
+      border: 2px solid var(--border-light);
+      border-top-color: var(--warn);
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+    }
+
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .run-status {
+      font-size: 14px;
+      color: var(--text-muted);
+      margin-left: auto;
+    }
+    .run-status-error { color: var(--reject); }
+    .run-status-warn  { color: var(--warn); }
+
+    /* =========================================================
+       SECTION HEADER (spec-document style)
+       ========================================================= */
+    .section {
+      margin-bottom: var(--space-xl);
+    }
+
+    .section-header {
+      display: flex;
+      align-items: baseline;
+      gap: var(--space-md);
+      padding-bottom: var(--space-sm);
+      border-bottom: 2px solid var(--border);
+      margin-bottom: 0;
+    }
+
+    .section-title {
+      font-family: var(--mono);
+      font-size: 14px;
+      font-weight: 700;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      color: var(--text-muted);
+    }
+
+    .section-rule {
+      flex: 1;
+      height: 0;
+      border: none;
+    }
+
+    /* =========================================================
+       VERDICT BANNER — the one element that gets scale
+       ========================================================= */
+    .verdict-banner {
+      padding: var(--space-lg) var(--space-xl);
+      border: 1px solid var(--border);
+      margin-bottom: var(--space-xl);
+      background: var(--neutral-bg);
+      transition: background 0.25s, border-color 0.25s;
+    }
+
+    .verdict-pass   { background: var(--pass-bg);   border-color: var(--pass); }
+    .verdict-reject { background: var(--reject-bg); border-color: var(--reject); }
+    .verdict-idle   { background: var(--neutral-bg); border-color: var(--border); }
+
+    #verdict-text {
+      display: block;
+      font-family: var(--mono);
+      font-size: clamp(2.5rem, 6vw, 4rem);
+      font-weight: 800;
+      letter-spacing: 0.04em;
+      line-height: 1.1;
+      color: var(--text-primary);
+      margin-bottom: var(--space-xs);
+    }
+
+    .verdict-pass   #verdict-text { color: var(--pass); }
+    .verdict-reject #verdict-text { color: var(--reject); }
+
+    #verdict-detail {
+      display: block;
+      font-size: 15px;
+      font-weight: 500;
+      color: var(--text-muted);
+    }
+
+    #verdict-master {
+      display: block;
+      font-family: var(--mono);
+      font-size: 14px;
+      color: var(--text-dim);
+      margin-top: var(--space-xs);
+    }
+
+    /* =========================================================
+       TABLES — spec-sheet style, hairline borders
+       ========================================================= */
+    .data-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 14px;
+    }
+
+    .data-table thead tr {
+      border-bottom: 1px solid var(--border-light);
+    }
+
+    .data-table th {
+      font-family: var(--mono);
+      font-size: 14px;
+      font-weight: 700;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--text-muted);
+      padding: var(--space-sm) var(--space-sm);
+      text-align: left;
+      white-space: nowrap;
+    }
+
+    .data-table td {
+      padding: var(--space-sm) var(--space-sm);
+      border-bottom: 1px solid var(--border);
+      vertical-align: middle;
+      font-size: 14px;
+      color: var(--text-primary);
+    }
+
+    .data-table tbody tr:last-child td { border-bottom: none; }
+
+    .data-table tbody tr:nth-child(even) td { background: var(--bg-row-alt); }
+
+    /* =========================================================
+       TYPOGRAPHY UTILITIES
+       ========================================================= */
+    .mono    { font-family: var(--mono); }
+    .tabular { font-variant-numeric: tabular-nums; }
+    .text-muted { color: var(--text-muted); }
+
+    .clause-id {
+      font-weight: 700;
+      font-size: 15px;
+      color: var(--text-primary);
+      min-width: 5ch;
+    }
+
+    .lang {
+      font-family: var(--mono);
+      font-size: 14px;
+      color: var(--text-muted);
+      white-space: nowrap;
+    }
+
+    .finding-msg {
+      color: var(--text-primary);
+      font-size: 14px;
+      line-height: 1.4;
+    }
+
+    /* =========================================================
+       SEVERITY BADGES — glyph + label, never colour alone
+       ========================================================= */
+    .badge {
+      font-family: var(--mono);
+      font-size: 14px;
+      font-weight: 700;
+      letter-spacing: 0.06em;
+      padding: 2px 6px;
+      border-radius: 1px;
+      display: inline-block;
+      white-space: nowrap;
+    }
+
+    .badge::before { margin-right: 4px; }
+
+    .badge-blocker {
+      color: var(--reject);
+      background: var(--reject-bg);
+      border: 1px solid rgba(242,73,92,0.3);
+    }
+    .badge-blocker::before { content: "■"; }
+
+    .badge-warning {
+      color: var(--warn);
+      background: var(--warn-bg);
+      border: 1px solid rgba(248,155,41,0.3);
+    }
+    .badge-warning::before { content: "▲"; }
+
+    .badge-ok, .badge-pass {
+      color: var(--pass);
+      background: var(--pass-bg);
+      border: 1px solid rgba(115,191,105,0.3);
+    }
+    .badge-ok::before, .badge-pass::before { content: "●"; }
+
+    /* =========================================================
+       LEDGER-SPECIFIC
+       ========================================================= */
+    .ledger-ts {
+      font-size: 14px;
+      color: var(--text-muted);
+      white-space: nowrap;
+      min-width: 9ch;
+    }
+
+    .ledger-op {
+      font-size: 14px;
+      font-weight: 600;
+      white-space: nowrap;
+    }
+
+    .ledger-detail {
+      font-size: 14px;
+      color: var(--text-muted);
+      max-width: 420px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .ledger-link {
+      font-family: var(--mono);
+      font-size: 14px;
+      color: var(--warn);
+      text-decoration: none;
+      white-space: nowrap;
+    }
+
+    .ledger-link:hover { text-decoration: underline; }
+
+    /* Ledger row appear animation — visible motion for demo footage */
+    @keyframes ledger-in {
+      from {
+        opacity: 0;
+        transform: translateY(-6px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    .ledger-appear {
+      animation: ledger-in 0.28s ease-out forwards;
+    }
+
+    /* =========================================================
+       READINESS GRID
+       ========================================================= */
+    .readiness-bar {
+      height: 10px;
+      border-radius: 1px;
+      min-width: 2px;
+      max-width: 100%;
+    }
+    .ready-full    { background: var(--pass); }
+    .ready-partial { background: var(--warn); }
+    .ready-low     { background: var(--reject); }
+
+    /* =========================================================
+       EMPTY STATES
+       ========================================================= */
+    .empty-state {
+      padding: var(--space-lg) var(--space-md);
+      color: var(--text-dim);
+      font-size: 0.85rem;
+      font-style: italic;
+      border-bottom: 1px solid var(--border);
+    }
+  </style>
+</head>
+
+<body>
+  <div class="page">
+
+    <!-- ── PAGE HEADER ─────────────────────────────────────────── -->
+    <header class="page-header">
+      <span class="page-title">FIRST PASS · Operator Console</span>
+      <span class="page-subtitle">StreamOne Delivery QC — Master evaluation against platform specification</span>
+    </header>
+
+    <!-- ── TRIGGER PANEL ────────────────────────────────────────── -->
+    <div class="trigger-panel">
+      <span class="trigger-label">Master</span>
+      <select id="master-select" aria-label="Select master file">
+        {% for m in masters %}
+        <option value="{{ m }}">{{ m }}</option>
+        {% endfor %}
+      </select>
+
+      <button id="run-btn" type="button" aria-label="Run QC pipeline">
+        <span id="spinner" aria-hidden="true"></span>
+        RUN
+      </button>
+
+      <span id="run-status" class="run-status" role="status" aria-live="polite">
+        Select a master and click RUN to evaluate.
+      </span>
+    </div>
+
+    <!-- ── § 1  VERDICT BANNER ──────────────────────────────────── -->
+    <section class="section" aria-label="Verdict">
+      <div class="section-header">
+        <span class="section-title">§ 1 · Verdict</span>
+      </div>
+
+      <div id="verdict-banner" class="verdict-banner verdict-idle" role="status" aria-live="polite">
+        <span id="verdict-text">IDLE</span>
+        <span id="verdict-detail">No run has been triggered yet.</span>
+        <span id="verdict-master"></span>
+      </div>
+    </section>
+
+    <!-- ── § 2  FIX LIST ────────────────────────────────────────── -->
+    <section class="section" aria-label="Fix list">
+      <div class="section-header">
+        <span class="section-title">§ 2 · Fix List — Spec Non-Conformances</span>
+      </div>
+
+      <table class="data-table" id="fix-list" aria-label="Fix list">
+        <thead>
+          <tr>
+            <th>CLAUSE</th>
+            <th>SEVERITY</th>
+            <th>MEASURED</th>
+            <th>EXPECTED</th>
+            <th>LANGUAGE</th>
+            <th>FINDING</th>
+          </tr>
+        </thead>
+        <tbody id="fix-body"></tbody>
+      </table>
+      <div id="fix-empty" class="empty-state">No findings yet. Run the pipeline to populate.</div>
+    </section>
+
+    <!-- ── § 3  READINESS GRID ──────────────────────────────────── -->
+    <section class="section" aria-label="Language readiness">
+      <div class="section-header">
+        <span class="section-title">§ 3 · Per-Language Readiness</span>
+      </div>
+
+      <table class="data-table" aria-label="Per-language readiness">
+        <thead>
+          <tr>
+            <th>LANGUAGE</th>
+            <th>READINESS</th>
+            <th style="width:240px">SCORE</th>
+          </tr>
+        </thead>
+        <tbody id="readiness-body">
+          <tr><td colspan="3" class="empty-state">No data yet.</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <!-- ── § 4  ACTION LEDGER ───────────────────────────────────── -->
+    <section class="section" aria-label="Action ledger">
+      <div class="section-header">
+        <span class="section-title">§ 4 · Action Ledger — MCP Writes</span>
+      </div>
+
+      <table class="data-table" aria-label="Action ledger">
+        <thead>
+          <tr>
+            <th>TIME (UTC)</th>
+            <th>OPERATION</th>
+            <th>DETAIL</th>
+            <th>LINK</th>
+          </tr>
+        </thead>
+        <tbody id="ledger-body"></tbody>
+      </table>
+      <div id="ledger-empty" class="empty-state">No agent actions yet. Ledger populates live during a run.</div>
+    </section>
+
+  </div><!-- /.page -->
+
+  <script src="/static/console.js"></script>
+</body>
+</html>

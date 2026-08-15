@@ -18,7 +18,7 @@ Public documentation is authored specifically for outside readers, judges, and d
 | `docs/DOMAIN.md` | Primer on film delivery QC concepts and multi-language dependencies. |
 | `docs/DISCLOSURE.md` | Secret hygiene and disclosure policy enforcement rules. |
 | `docs/evidence.md` | Verified citations supporting domain facts. |
-| `agents/ mcp/ data/ frontend/ (Planned) scripts/ tests/` | Source code, synthetic data, verification scripts, and test suite. |
+| `agents/ mcp/ data/ frontend/ scripts/ tests/` | Source code, synthetic data, verification scripts, and test suite. |
 | `LICENSE`, `.env.example` | MIT License; environment variable template with uppercase placeholders. |
 
 ## Secret Hygiene & Environment Rules

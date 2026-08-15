@@ -49,8 +49,8 @@ Building on Grafana Cloud provides unified metrics, structured logs, incidents, 
 └──────────────────────────┬─────────────────────────────┘
                            ▼
 ┌────────────────────────────────────────────────────────┐
-│ Operator Console (GCE VM) (Planned)                    │
-│  (Verdict Banner · Clause Breakdown · Action Ledger)   │
+│ Operator Console (local / GCE VM)                      │
+│  (Verdict Banner · Fix List · Action Ledger · Trigger) │
 └──────────────────────────┴─────────────────────────────┘
 ```
 
@@ -66,7 +66,8 @@ Building on Grafana Cloud provides unified metrics, structured logs, incidents, 
 | **Metrics Pipeline** | Prometheus Remote-Write | Ingests numerical QC telemetry (`qc_checks`, `qc_loudness_deviation_lufs`, `qc_blockers_current`) with fixed, low-cardinality label sets. |
 | **Logs Pipeline** | Loki Push API | Ingests structured JSON log lines per check finding containing high-cardinality metadata (`run_id`, clause details). |
 | **Check Engine** | Pure, deterministic Python | Ensures all numerical calculations and spec evaluations are reproducible prior to LLM invocation. |
-| **Hosting (Planned)** | GCE VM & Secret Manager | Containerized deployment for agent service, MCP server, and web console on a GCE VM with secure secret management. |
+| **Operator Console** | FastAPI + Jinja2 + vanilla JS | Single-page app serving verdict, fix list, readiness grid, and action ledger. Runs in the same Python process as the agent via a `ThreadPoolExecutor` for event-loop isolation. |
+| **Hosting** | GCE VM & Secret Manager | Containerized deployment for agent service, MCP server, and web console on a GCE VM with secure secret management. |
 
 ## The Unattended Authentication Architecture
 
@@ -143,6 +144,40 @@ The active agent operates exclusively through a bounded `McpToolset` restricted 
 ### Planned Tools (Roadmap)
 Future multi-agent expansions will evaluate expanding `tool_filter` permissions to include:
 - Read tools (`search_dashboards`, `get_dashboard_summary`, `query_prometheus`, `query_loki_logs`, `list_incidents`, `generate_deeplink`) for interactive agent inspection.
+
+## Operator Console
+
+The operator console (`frontend/`) is a FastAPI + Jinja2 + vanilla JavaScript single-page application that renders the output of the deterministic check engine without recomputing it.
+
+### Three panels
+
+1. **Verdict Banner** — colour-coded PASS / REJECT, scaled for readability from across a room at 1080p.
+2. **Fix List** — every finding with clause ID (monospace, left-aligned), severity badge (glyph + label, not colour alone), measured vs expected in tabular-figure monospace, language, and human-readable message.
+3. **Action Ledger** — incremental live log of every MCP write the agent performs. Rows append with a CSS keyframe animation. Each row links into Grafana (incident, annotation, alert rule) using the identifier returned by the MCP tool response. The Grafana hostname is read from `GRAFANA_URL` at request time and never rendered as visible text — link text reads `"Incident #142"`, not the URL.
+
+### Trigger button
+
+A RUN button lets operators (and judges) re-run the pipeline against any of the three masters without CLI access. Each run produces fresh telemetry in Grafana Cloud, ensuring the dashboard is populated during judging regardless of the 14-day retention window.
+
+### Guardrails
+
+| Guardrail | Mechanism |
+|---|---|
+| Single flight | `threading.Lock` — `POST /api/run` returns 409 while the lock is held |
+| Cooldown | `CONSOLE_COOLDOWN_SECONDS` (default 30 s) — `POST /api/run` returns 429 with `Retry-After` |
+| Event-loop isolation | Pipeline runs in a `ThreadPoolExecutor`; `asyncio.run()` inside `run_delivery_qc` gets a clean thread-local event loop, isolated from FastAPI's own loop |
+| No hostname in DOM | Grafana deeplinks are built server-side; link text is always a human label, never the raw URL |
+
+### API
+
+```
+GET  /                  Renders the console page
+GET  /api/masters       Lists master JSON files from data/masters/
+POST /api/run           {"master": "..."}  → {"run_id": "uuid"} | 409 | 429
+GET  /api/run/{run_id}  {"status": "running|done|failed", "verdict": ..., ...}
+```
+
+The page polls `GET /api/run/{run_id}` every 1.5 seconds while a run is active, appending only newly-arrived ledger entries on each tick.
 
 ## Security & Repository Hygiene
 
