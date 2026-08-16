@@ -200,20 +200,20 @@ def test_evaluate_master_clauses_by_id_and_missing_clause_text():
                 "clause_id": "A-2.1",
                 "domain": "audio",
                 "text": "Integrated audio loudness must be -27 LUFS +/- 2 LU.",
-                "check": {"op": "within", "target": -27.0, "tolerance": 2.0},
+                "check": {"field": "audio_tracks[].integrated_loudness_lufs", "op": "within", "target": -27.0, "tolerance": 2.0},
                 "severity_on_fail": "blocker"
             },
             {
                 "clause_id": "V-NO-TEXT",
                 "domain": "video",
                 # text field omitted on purpose
-                "check": {"op": "equals", "target": "BT.2020"},
+                "check": {"field": "video.color_primaries", "op": "equals", "target": "BT.2020"},
                 "severity_on_fail": "blocker"
             },
             {
                 # clause_id field omitted on purpose
                 "domain": "packaging",
-                "check": {"op": "equals", "target": True},
+                "check": {"field": "packaging.naming_pattern_ok", "op": "equals", "target": True},
                 "severity_on_fail": "warning"
             }
         ]
@@ -254,13 +254,13 @@ def test_evaluate_master_fallback_expressions():
             {
                 "clause_id": "T-4.2",
                 "domain": "timed_text",
-                "check": {"op": "language_coverage"},
+                "check": {"op": "language_coverage", "of": "timed_text", "against": "audio_tracks"},
                 "severity_on_fail": "blocker"
             },
             {
                 "clause_id": "P-1.1",
                 "domain": "packaging",
-                "check": {"op": "equals", "target": True},
+                "check": {"field": "packaging.naming_pattern_ok", "op": "equals", "target": True},
                 "severity_on_fail": "warning"
             }
         ]
@@ -305,7 +305,7 @@ def test_evaluate_master_clause_id_absent_from_spec_clauses_by_id():
                 "clause_id": "A-2.1",
                 "domain": "audio",
                 "text": "Audio check clause",
-                "check": {"op": "within", "target": -27.0, "tolerance": 2.0}
+                "check": {"field": "audio_tracks[].integrated_loudness_lufs", "op": "within", "target": -27.0, "tolerance": 2.0}
             }
         ]
     }
@@ -332,25 +332,25 @@ def test_evaluate_master_warning_severities_and_packaging_blocker():
             {
                 "clause_id": "A-WARN",
                 "domain": "audio",
-                "check": {"op": "within", "target": -27.0, "tolerance": 2.0},
+                "check": {"field": "audio_tracks[].integrated_loudness_lufs", "op": "within", "target": -27.0, "tolerance": 2.0},
                 "severity_on_fail": "warning",
             },
             {
                 "clause_id": "V-WARN",
                 "domain": "video",
-                "check": {"op": "equals", "target": "BT.2020"},
+                "check": {"field": "video.color_primaries", "op": "equals", "target": "BT.2020"},
                 "severity_on_fail": "warning",
             },
             {
                 "clause_id": "T-WARN",
                 "domain": "timed_text",
-                "check": {"op": "language_coverage"},
+                "check": {"op": "language_coverage", "of": "timed_text", "against": "audio_tracks"},
                 "severity_on_fail": "warning",
             },
             {
                 "clause_id": "P-BLOCK",
                 "domain": "packaging",
-                "check": {"op": "equals", "target": True},
+                "check": {"field": "packaging.naming_pattern_ok", "op": "equals", "target": True},
                 "severity_on_fail": "blocker",
             },
         ],
@@ -376,7 +376,14 @@ def test_evaluate_master_india_mode_integration():
     """
     spec = {
         "spec_id": "TEST-SPEC-INDIA",
-        "clauses": [],
+        "clauses": [
+            {
+                "clause_id": "P-1.1",
+                "domain": "packaging",
+                "check": {"field": "packaging.naming_pattern_ok", "op": "equals", "target": True},
+                "severity_on_fail": "warning",
+            }
+        ],
         "india_mode": {"enabled": True},
     }
     master = {
@@ -385,6 +392,7 @@ def test_evaluate_master_india_mode_integration():
             {"language": "ta-IN", "role": "original"},
             {"language": "hi-IN", "role": "dub"},
         ],
+        "packaging": {"naming_pattern_ok": True},
         "certification": {
             "ta-IN": "pending",
             "hi-IN": "cleared",
@@ -443,7 +451,7 @@ def test_audio_true_peak_warning_severity():
             {
                 "clause_id": "A-2.2-WARN",
                 "domain": "audio",
-                "check": {"op": "max", "target": -2.0},
+                "check": {"field": "audio_tracks[].true_peak_dbtp", "op": "max", "target": -2.0},
                 "severity_on_fail": "warning",
             }
         ]

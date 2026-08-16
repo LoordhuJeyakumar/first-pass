@@ -432,6 +432,34 @@ class TestThreadSafety:
         assert not errors, f"Concurrent thread safety errors: {errors}"
 
 
+def test_pipeline_exception_does_not_expose_python_exception_type():
+    """Operator poll payload must not include exception class names such as TypeError."""
+    import frontend.app as app_mod
+    app_mod = _fresh_app()
+    app_mod._last_run_at = 0.0
+
+    def _boom(master_path, spec_path, *args, **kwargs):
+        raise TypeError("'<=' not supported between instances of 'float' and 'str'")
+
+    with patch.object(app_mod, "run_delivery_qc", side_effect=_boom):
+        with patch.dict("os.environ", {"CONSOLE_COOLDOWN_SECONDS": "0"}):
+            client = _make_client(app_mod)
+            resp = client.post("/api/run", json={"master": FAKE_MASTER})
+            assert resp.status_code == 200
+            run_id = resp.json()["run_id"]
+            error = None
+            for _ in range(50):
+                poll = client.get(f"/api/run/{run_id}").json()
+                if poll["status"] in ("failed", "done"):
+                    error = poll.get("error")
+                    break
+                time.sleep(0.05)
+
+    assert error is not None
+    assert "TypeError" not in str(error)
+    assert "Quality check could not be completed" in str(error)
+
+
 def test_api_fixture_gating_and_success(monkeypatch):
     """
     Tests that POST /api/fixture returns 404 when CONSOLE_DEV_FIXTURES is not set,

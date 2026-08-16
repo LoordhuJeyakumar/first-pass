@@ -315,7 +315,7 @@ def _run_pipeline(run_id: str, master_path: str) -> None:
                     "findings": [],
                     "readiness": {},
                     "india_mode": None,
-                    "error": str(exc),
+                    "error": "Quality check could not be completed. The master or spec data is invalid.",
                 })
     finally:
         _last_run_at = time.time()
