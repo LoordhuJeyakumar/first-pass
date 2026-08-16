@@ -74,9 +74,17 @@ Run the orchestrator CLI against synthetic master metadata files in `data/master
 
 ## Real measurement (file → master JSON → verdict)
 
-`agents/measure.py` generates a short lavfi 1 kHz sine WAV (pcm_s24le), measures integrated loudness and true peak with ffmpeg `ebur128`, and maps ffprobe audio structure into master JSON. Video colour/resolution/frame rate, packaging, timed text, and certification are **declared** — they are not guessed from the WAV.
+`agents/measure.py` generates a short lavfi 1 kHz sine WAV (pcm_s24le), measures integrated loudness and true peak with ffmpeg `ebur128`, and maps ffprobe audio structure into master JSON. The adapter also reads real delivery containers (MXF, MOV, WAV); loudness is measured from the audio essence — the container is irrelevant to the number, and we test that. Video colour/resolution/frame rate, packaging, timed text, and certification are **declared** — they are not guessed from the file.
 
-Requires system `ffmpeg`/`ffprobe` (not a pip package).
+Requires system `ffmpeg`/`ffprobe` (not a pip package). Example MXF (same codecs as a typical HD delivery; both lavfi inputs use an explicit 6s duration):
+
+```bash
+ffmpeg -y \
+  -f lavfi -i "testsrc=size=1920x1080:rate=25:duration=6" \
+  -f lavfi -i "sine=frequency=1000:duration=6:sample_rate=48000" \
+  -af volume=-3dB -c:v mpeg2video -b:v 20M -c:a pcm_s24le -f mxf out.mxf
+.venv/bin/python -m agents.measure out.mxf --evaluate
+```
 
 ### Generate a failing loudness clip and evaluate
 
@@ -94,4 +102,4 @@ Requires system `ffmpeg`/`ffprobe` (not a pip package).
   --declare-frame-rate 24
 ```
 
-`--generate pass` uses `volume=-6dB` (~-27.1 LUFS). Point the first argument at an existing WAV instead of `--generate` to measure a file. Output prints the ebur128 Summary, the adapter JSON, undeclared-field notices, and the engine verdict.
+`--generate pass` uses `volume=-6dB` (~-27.1 LUFS). Point the first argument at an existing WAV, MXF, or MOV instead of `--generate` to measure a file. Output prints the ebur128 Summary, the adapter JSON, undeclared-field notices, and the engine verdict.

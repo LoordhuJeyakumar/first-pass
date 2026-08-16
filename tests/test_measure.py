@@ -3,6 +3,7 @@
 import json
 import os
 import shutil
+import subprocess
 import sys
 
 import pytest
@@ -13,6 +14,7 @@ from agents.check_engine import evaluate_master_against_spec
 from agents.measure import (
     LUFS_ANCHOR_FAIL,
     LUFS_ANCHOR_PASS,
+    SINE_DURATION_S,
     VOLUME_FAIL_DB,
     VOLUME_PASS_DB,
     DeclaredFields,
@@ -21,6 +23,8 @@ from agents.measure import (
     build_master,
     generate_sine_wav,
     parse_ebur128_summary,
+    probe_media,
+    require_binary,
     run_cli,
     undeclared_notices,
 )
@@ -170,6 +174,65 @@ def test_build_master_rejects_missing_measurement_keys():
         build_master(FFPROBE_AUDIO_ONLY, {}, DeclaredFields())
 
 
+def test_channel_label_normalises_layout_and_count():
+    wav_style = build_master(
+        FFPROBE_AUDIO_ONLY,
+        {"integrated_loudness_lufs": -24.1, "true_peak_dbtp": -3.0},
+        DeclaredFields(),
+    )
+    mxf_style = build_master(
+        {
+            "streams": [
+                {
+                    "codec_type": "audio",
+                    "codec_name": "pcm_s24le",
+                    "sample_rate": "48000",
+                    "channels": 2,
+                }
+            ],
+            "format": {"duration": "6.000000", "format_name": "mxf"},
+        },
+        {"integrated_loudness_lufs": -24.1, "true_peak_dbtp": -3.0},
+        DeclaredFields(),
+    )
+    assert wav_style["audio_tracks"][0]["channels"] == "mono"
+    assert mxf_style["audio_tracks"][0]["channels"] == "stereo"
+
+
+def _encode_delivery(path: str, fmt: str, volume_db: float) -> None:
+    ffmpeg = require_binary("ffmpeg")
+    duration = SINE_DURATION_S
+    cmd = [
+        ffmpeg,
+        "-y",
+        "-f",
+        "lavfi",
+        "-i",
+        f"testsrc=size=1920x1080:rate=25:duration={duration}",
+        "-f",
+        "lavfi",
+        "-i",
+        f"sine=frequency=1000:duration={duration}:sample_rate=48000",
+        "-af",
+        f"volume={volume_db}dB",
+        "-c:v",
+        "mpeg2video",
+        "-b:v",
+        "20M",
+        "-c:a",
+        "pcm_s24le",
+        "-f",
+        fmt,
+        path,
+    ]
+    completed = subprocess.run(cmd, capture_output=True, text=True)
+    if completed.returncode != 0:
+        raise AssertionError(
+            f"ffmpeg encode {fmt} failed (exit {completed.returncode}): "
+            f"{(completed.stderr or completed.stdout or '').strip() or 'no output'}"
+        )
+
+
 @NEEDS_FFMPEG
 def test_fail_clip_measures_near_minus_24_1(tmp_path):
     wav = str(tmp_path / "fail.wav")
@@ -208,3 +271,30 @@ def test_cli_without_declared_color_prints_v13(tmp_path, capsys):
     assert code == 0
     assert "V-1.3" in captured.out
     assert "color_primaries" in captured.out
+
+
+@NEEDS_FFMPEG
+@pytest.mark.parametrize("fmt,ext,format_token", [("mxf", "mxf", "mxf"), ("mov", "mov", "mov")])
+def test_delivery_container_lufs_matches_wav_and_does_not_invent_video(tmp_path, fmt, ext, format_token):
+    wav = str(tmp_path / "same-level.wav")
+    container = str(tmp_path / f"same-level.{ext}")
+    generate_sine_wav(wav, VOLUME_FAIL_DB)
+    _encode_delivery(container, fmt, VOLUME_FAIL_DB)
+
+    probe = probe_media(container)
+    fmt_name = (probe.get("format") or {}).get("format_name") or ""
+    assert format_token in fmt_name
+    video = next(
+        (s for s in probe.get("streams") or [] if isinstance(s, dict) and s.get("codec_type") == "video"),
+        {},
+    )
+    assert not video.get("color_primaries")
+
+    wav_master, _, _ = assemble_from_file(wav, DeclaredFields())
+    container_master, _, notices = assemble_from_file(container, DeclaredFields())
+    wav_lufs = wav_master["audio_tracks"][0]["integrated_loudness_lufs"]
+    container_lufs = container_master["audio_tracks"][0]["integrated_loudness_lufs"]
+    assert wav_lufs == pytest.approx(LUFS_ANCHOR_FAIL, abs=0.3)
+    assert container_lufs == pytest.approx(wav_lufs, abs=0.3)
+    assert "video" not in container_master
+    assert any("V-1.3" in n and "color_primaries" in n for n in notices)

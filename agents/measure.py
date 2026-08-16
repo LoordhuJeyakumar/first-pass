@@ -155,15 +155,21 @@ def _audio_streams(probe: Dict[str, Any]) -> List[Dict[str, Any]]:
     return audio
 
 
+_CHANNEL_COUNT_LAYOUT = {1: "mono", 2: "stereo", 6: "5.1"}
+
+
 def _channel_label(stream: Dict[str, Any]) -> Optional[str]:
     layout = stream.get("channel_layout")
     if isinstance(layout, str) and layout.strip():
         return layout.strip()
     channels = stream.get("channels")
-    if isinstance(channels, int):
-        return str(channels)
     if isinstance(channels, str) and channels.strip():
-        return channels.strip()
+        try:
+            channels = int(channels.strip())
+        except ValueError:
+            return channels.strip()
+    if isinstance(channels, int):
+        return _CHANNEL_COUNT_LAYOUT.get(channels, str(channels))
     return None
 
 
