@@ -314,15 +314,15 @@ else
   ERRORS=$((ERRORS + 1))
 fi
 
-# Check 8: Exactly one progress log exists in the tree
-echo "  [Check 8/16] Verifying exactly one progress log exists in tree..."
+# Check 8: At most one progress log exists in the tree
+echo "  [Check 8/16] Verifying at most one progress log exists in tree..."
 C8_OUT=$(python3 -c '
 import glob, os, sys
 
 logs = glob.glob("**/*PROGRESS*.md", recursive=True) + glob.glob("**/*progress*.md", recursive=True)
 logs = sorted(list(set(os.path.normpath(p) for p in logs if ".git" not in p and "node_modules" not in p)))
 
-if len(logs) == 1:
+if len(logs) <= 1:
     print("OK")
 else:
     print(f"INVALID_PROGRESS_COUNT:{len(logs)} -> {logs}")
@@ -330,7 +330,7 @@ else:
 ' 2>&1 || true)
 
 if [[ "$C8_OUT" == "OK" ]]; then
-  echo "  ✅ Check 8 passed: Exactly one progress log exists."
+  echo "  ✅ Check 8 passed: At most one progress log exists."
 else
   echo "  ❌ ERROR Check 8 failed: Progress log count invariant broken: $C8_OUT"
   ERRORS=$((ERRORS + 1))

@@ -1,0 +1,35 @@
+# CI only — no deploy, no secrets. The suite is written to pass with a clean environment.
+name: CI
+
+on:
+  push:
+    branches: [master, main]
+  pull_request:
+
+jobs:
+  verify:
+    name: Disclosure and invariants
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version-file: .python-version
+          cache: pip
+          cache-dependency-path: |
+            agents/requirements.txt
+            frontend/requirements.txt
+
+      - name: Create .venv and install dependencies
+        run: |
+          python -m venv .venv
+          .venv/bin/pip install --upgrade pip
+          .venv/bin/pip install -r agents/requirements.txt -r frontend/requirements.txt
+
+      - name: Disclosure audit
+        run: ./scripts/check-disclosure.sh --all
+
+      - name: Invariant audit (16 checks, including pytest coverage floor)
+        run: ./scripts/check-invariants.sh

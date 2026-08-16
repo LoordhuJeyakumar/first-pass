@@ -1,5 +1,7 @@
 # First Pass
 
+[![CI](https://github.com/LoordhuJeyakumar/first-pass/actions/workflows/ci.yml/badge.svg)](https://github.com/LoordhuJeyakumar/first-pass/actions/workflows/ci.yml)
+
 **Agents that catch a film delivery rejection before the platform does.**
 
 Roughly a quarter of film masters fail platform Quality Control (QC) on first submission — most often for mundane, preventable reasons such as an audio mix delivered at theatrical loudness (~−24 LUFS) against a streaming platform spec requiring ~−27 LUFS. Every rejection incurs redelivery fees and risks missing an announced premiere date.
@@ -71,6 +73,8 @@ Before committing code, arm the disclosure pre-commit hook (git does not propaga
 git config core.hooksPath .githooks
 ./scripts/check-disclosure.sh --all
 ```
+
+Every push and pull request runs the same disclosure audit and `./scripts/check-invariants.sh` (16 checks, no secrets) on GitHub Actions.
 
 For full details on public documentation boundaries and secret management rules, see [`docs/DISCLOSURE.md`](docs/DISCLOSURE.md).
 
