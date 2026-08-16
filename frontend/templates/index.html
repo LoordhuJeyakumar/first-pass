@@ -113,7 +113,8 @@
       letter-spacing: 0.08em;
     }
 
-    #master-select {
+    #master-select,
+    #spec-select {
       font-family: var(--mono);
       font-size: 14px;
       background-color: var(--bg-panel);
@@ -133,12 +134,14 @@
       padding-right: 28px;
     }
 
-    #master-select option {
+    #master-select option,
+    #spec-select option {
       background-color: var(--bg-panel);
       color: var(--text-primary);
     }
 
-    #master-select:focus-visible {
+    #master-select:focus-visible,
+    #spec-select:focus-visible {
       outline: 2px solid var(--warn);
       outline-offset: 2px;
     }
@@ -762,7 +765,7 @@
     <!-- ── DELIVERY QC SLATE ────────────────────────────────────── -->
     <div class="qc-slate" aria-label="Delivery QC Slate">
       <div class="slate-header">
-        <span class="slate-title">DELIVERY QC SLATE · STREAMONE</span>
+        <span class="slate-title">DELIVERY QC SLATE</span>
         <span class="slate-badge">EBU TECH 3341</span>
       </div>
       <div class="slate-grid">
@@ -798,12 +801,19 @@
         {% endfor %}
       </select>
 
+      <span class="trigger-label">Spec</span>
+      <select id="spec-select" aria-label="Select destination spec">
+        {% for s in specs %}
+        <option value="{{ s }}" {% if s == default_spec %}selected{% endif %}>{{ s }}</option>
+        {% endfor %}
+      </select>
+
       <button id="run-btn" type="button" aria-label="Run QC pipeline">
         RUN
       </button>
 
       <span id="run-status" class="run-status" role="status" aria-live="polite">
-        Select a master and click RUN to evaluate.
+        Select a master and spec and click RUN to evaluate.
       </span>
     </div>
 

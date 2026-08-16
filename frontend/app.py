@@ -4,6 +4,7 @@ First Pass — Operator Console (FastAPI)
 Single-page web app that provides:
   - GET  /           : Renders the operator console HTML page.
   - GET  /api/masters: Lists available master files from data/masters/.
+  - GET  /api/specs  : Lists available spec files from data/specs/.
   - POST /api/run    : Starts a pipeline run in a background thread; returns run_id.
                        Returns 409 if a run is already in progress.
                        Returns 429 if inside the cooldown window.
@@ -55,7 +56,8 @@ from agents.orchestrator import run_delivery_qc  # noqa: E402
 # ---------------------------------------------------------------------------
 
 MASTERS_DIR = PROJECT_ROOT / "data" / "masters"
-SPEC_PATH = str(PROJECT_ROOT / "data" / "specs" / "streamone.json")
+SPECS_DIR = PROJECT_ROOT / "data" / "specs"
+DEFAULT_SPEC = "streamone.json"
 TEMPLATES_DIR = Path(__file__).parent / "templates"
 STATIC_DIR = Path(__file__).parent / "static"
 
@@ -257,7 +259,7 @@ def _now_iso() -> str:
 # Background pipeline runner
 # ---------------------------------------------------------------------------
 
-def _run_pipeline(run_id: str, master_path: str) -> None:
+def _run_pipeline(run_id: str, master_path: str, spec_path: str) -> None:
     """
     Executes run_delivery_qc in a background thread.
     Updates the run store live as tool calls are observed.
@@ -276,7 +278,7 @@ def _run_pipeline(run_id: str, master_path: str) -> None:
                     _runs[run_id]["ledger"] = new_ledger
 
     try:
-        report = run_delivery_qc(master_path, SPEC_PATH, on_tool_event=_on_tool_event)
+        report = run_delivery_qc(master_path, spec_path, on_tool_event=_on_tool_event)
 
         findings = report.get("findings", [])
         readiness = report.get("readiness", {})
@@ -340,10 +342,11 @@ templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
 async def index(request: Request) -> HTMLResponse:
     """Renders the operator console page."""
     masters = _list_masters()
+    specs = _list_specs()
     return templates.TemplateResponse(
         request=request,
         name="index.html",
-        context={"masters": masters},
+        context={"masters": masters, "specs": specs, "default_spec": DEFAULT_SPEC},
     )
 
 
@@ -390,6 +393,12 @@ async def list_masters() -> JSONResponse:
     return JSONResponse({"masters": _list_masters()})
 
 
+@app.get("/api/specs")
+async def list_specs() -> JSONResponse:
+    """Returns available spec files as JSON."""
+    return JSONResponse({"specs": _list_specs()})
+
+
 @app.post("/api/run")
 async def start_run(request: Request) -> JSONResponse:
     """
@@ -410,7 +419,13 @@ async def start_run(request: Request) -> JSONResponse:
     if master_name not in allowed_masters:
         raise HTTPException(status_code=400, detail=f"Invalid master file: {master_name}")
 
+    spec_name = body.get("spec") or DEFAULT_SPEC
+    allowed_specs = _list_specs()
+    if spec_name not in allowed_specs:
+        raise HTTPException(status_code=400, detail=f"Invalid spec file: {spec_name}")
+
     master_path = MASTERS_DIR / master_name
+    spec_path = SPECS_DIR / spec_name
 
     # Cooldown check (before lock acquisition to give a clear error message)
     cooldown = _cooldown_seconds()
@@ -452,7 +467,7 @@ async def start_run(request: Request) -> JSONResponse:
             "error": None,
         }
 
-    _executor.submit(_run_pipeline, run_id, str(master_path))
+    _executor.submit(_run_pipeline, run_id, str(master_path), str(spec_path))
     return JSONResponse({"run_id": run_id})
 
 
@@ -479,3 +494,10 @@ def _list_masters() -> list:
     if not MASTERS_DIR.exists():
         return []
     return sorted(p.name for p in MASTERS_DIR.glob("*.json"))
+
+
+def _list_specs() -> list:
+    """Returns sorted list of spec JSON filenames from data/specs/."""
+    if not SPECS_DIR.exists():
+        return []
+    return sorted(p.name for p in SPECS_DIR.glob("*.json"))

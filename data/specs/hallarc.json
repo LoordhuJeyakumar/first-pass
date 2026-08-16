@@ -1,0 +1,62 @@
+{
+  "spec_id": "HALLARC-SCREENING-2026",
+  "title": "HallArc Screening Delivery Specification v2026.1",
+  "clauses": [
+    {
+      "clause_id": "A-1.1",
+      "domain": "audio",
+      "text": "Integrated loudness of every audio track must be -24 LUFS with a tolerance of +/-1 LU.",
+      "check": {
+        "field": "audio_tracks[].integrated_loudness_lufs",
+        "op": "within",
+        "target": -24.0,
+        "tolerance": 1.0
+      },
+      "severity_on_fail": "blocker"
+    },
+    {
+      "clause_id": "A-1.2",
+      "domain": "audio",
+      "text": "True Peak of every audio track must not exceed -1.0 dBTP.",
+      "check": {
+        "field": "audio_tracks[].true_peak_dbtp",
+        "op": "max",
+        "target": -1.0
+      },
+      "severity_on_fail": "blocker"
+    },
+    {
+      "clause_id": "V-2.1",
+      "domain": "video",
+      "text": "Masters must carry BT.709 primaries.",
+      "check": {
+        "field": "video.color_primaries",
+        "op": "equals",
+        "target": "BT.709"
+      },
+      "severity_on_fail": "blocker"
+    },
+    {
+      "clause_id": "T-3.1",
+      "domain": "timed_text",
+      "text": "Every delivered language requires a subtitle track.",
+      "check": {
+        "op": "language_coverage",
+        "of": "timed_text",
+        "against": "audio_tracks"
+      },
+      "severity_on_fail": "blocker"
+    },
+    {
+      "clause_id": "P-2.1",
+      "domain": "packaging",
+      "text": "Component naming must follow the HallArc pattern.",
+      "check": {
+        "field": "packaging.naming_pattern_ok",
+        "op": "equals",
+        "target": true
+      },
+      "severity_on_fail": "warning"
+    }
+  ]
+}

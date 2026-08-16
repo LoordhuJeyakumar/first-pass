@@ -1311,17 +1311,23 @@ if __name__ == "__main__":
     parser.add_argument("--verbose", "-v", action="store_true", help="Enable verbose DEBUG logging")
     parser.add_argument("--plain", action="store_true", help="Use plain stdlib logging output instead of Rich formatting")
     parser.add_argument("--master", "-m", help="Path to master JSON metadata file")
+    parser.add_argument(
+        "--spec",
+        default=os.path.join("data", "specs", "streamone.json"),
+        help="Path to spec JSON file (default: data/specs/streamone.json)",
+    )
     args = parser.parse_args()
 
     setup_logging(verbose=args.verbose, plain=args.plain)
 
     base_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
     master_file = os.path.abspath(args.master) if args.master else os.path.join(base_dir, "data", "masters", "master_blockers.json")
-    default_spec = os.path.join(base_dir, "data", "specs", "streamone.json")
+    spec_file = args.spec if os.path.isabs(args.spec) else os.path.abspath(os.path.join(base_dir, args.spec))
 
-    report = run_delivery_qc(master_file, default_spec)
+    report = run_delivery_qc(master_file, spec_file)
     print("\n" + "=" * 60)
     print(f"QC Evaluation Complete: {report['master_id']}")
+    print(f"Spec: {report.get('spec_id', '')}")
     print(f"Verdict: {report['verdict']}")
     print(f"Blocker Count: {report['blocker_count']}")
     plan = report.get("ranked_fix_plan") or {}

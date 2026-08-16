@@ -29,7 +29,7 @@ let tcAnimationFrame = null;
 let elVerdict, elVerdictText, elBlockerCount, elMasterId;
 let elFixList, elFixBody, elFixEmpty;
 let elLedgerBody, elLedgerEmpty;
-let elRunBtn, elMasterSelect, elStatus;
+let elRunBtn, elMasterSelect, elSpecSelect, elStatus;
 let elReadinessBody;
 let elSlateMaster, elSlateSpec, elSlateLangs, elSlateDate, elSlateTc;
 let elMeterGrid, elMeterEmpty, elMeterSectionTitle;
@@ -50,6 +50,7 @@ document.addEventListener("DOMContentLoaded", () => {
   elLedgerEmpty   = document.getElementById("ledger-empty");
   elRunBtn        = document.getElementById("run-btn");
   elMasterSelect  = document.getElementById("master-select");
+  elSpecSelect    = document.getElementById("spec-select");
   elStatus        = document.getElementById("run-status");
   elReadinessBody = document.getElementById("readiness-body");
 
@@ -104,6 +105,7 @@ function stopTC() {
 
 async function handleRunClick() {
   const master = elMasterSelect.value;
+  const spec = elSpecSelect ? elSpecSelect.value : "";
   if (!master) return;
 
   setRunning(true);
@@ -116,7 +118,7 @@ async function handleRunClick() {
     response = await fetch("/api/run", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ master }),
+      body: JSON.stringify({ master, spec }),
     });
   } catch (err) {
     stopTC();

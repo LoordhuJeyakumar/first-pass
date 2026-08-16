@@ -214,6 +214,36 @@ def test_video_block_missing_when_v13_exists_is_blocker():
     assert report["blocker_count"] >= 1
     blob = _spec_errors_text(report)
     assert "video" in blob.lower()
+    video_findings = [f for f in report["findings"] if f.get("domain") == "video"]
+    assert video_findings
+    assert video_findings[0]["clause_id"] == "V-1.3"
+
+
+def test_missing_video_uses_spec_video_clause_id_not_v13():
+    spec = {
+        "spec_id": "HALLARC-SHAPE",
+        "clauses": [
+            {
+                "clause_id": "V-2.1",
+                "domain": "video",
+                "text": "Masters must carry BT.709 primaries.",
+                "check": {
+                    "field": "video.color_primaries",
+                    "op": "equals",
+                    "target": "BT.709",
+                },
+                "severity_on_fail": "blocker",
+            }
+        ],
+    }
+    master = {"master_id": "NO-VIDEO", "audio_tracks": [_audio_track()]}
+
+    report = evaluate_master_against_spec(master, spec)
+    assert report["verdict"] == "REJECT"
+    video_findings = [f for f in report["findings"] if f.get("domain") == "video"]
+    assert len(video_findings) == 1
+    assert video_findings[0]["clause_id"] == "V-2.1"
+    assert video_findings[0]["severity"] == "blocker"
 
 
 def test_certification_missing_when_india_gating_runs_is_explicit():

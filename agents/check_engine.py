@@ -548,9 +548,13 @@ def evaluate_master_against_spec(master: Dict[str, Any], spec: Dict[str, Any]) -
             "blocker",
         )
     if referenced_video and not video_usable:
+        video_clause_id = next(
+            (c.get("clause_id") for c in clauses if c.get("domain") == "video" and c.get("clause_id")),
+            None,
+        )
         record_fail(
             {
-                "clause_id": "V-1.3" if any(c.get("clause_id") == "V-1.3" for c in clauses) else None,
+                "clause_id": video_clause_id,
                 "domain": "video",
                 "severity": "blocker",
                 "clause_text": "",

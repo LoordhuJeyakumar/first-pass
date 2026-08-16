@@ -47,6 +47,16 @@ def _make_client(app_mod=None):
     return TestClient(app_mod.app, raise_server_exceptions=False)
 
 
+def _wait_for_run(client, run_id, timeout=5.0):
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        poll = client.get(f"/api/run/{run_id}")
+        if poll.status_code == 200 and poll.json().get("status") in ("done", "failed"):
+            return poll.json()
+        time.sleep(0.05)
+    raise AssertionError(f"run {run_id} did not finish")
+
+
 # ---------------------------------------------------------------------------
 # Fixture: ensure data/masters/ exists so /api/masters doesn't 500
 # ---------------------------------------------------------------------------
@@ -74,6 +84,18 @@ class TestMastersList:
         # data/masters/ must have at least the three canonical masters
         assert any("master_clean" in m for m in masters)
         assert any("master_blockers" in m for m in masters)
+
+
+class TestSpecsList:
+    def test_returns_json_list(self):
+        client = _make_client()
+        resp = client.get("/api/specs")
+        assert resp.status_code == 200
+        body = resp.json()
+        assert "specs" in body
+        specs = body["specs"]
+        assert "streamone.json" in specs
+        assert "hallarc.json" in specs
 
 
 # ---------------------------------------------------------------------------
@@ -245,6 +267,7 @@ class TestCooldownGuard:
 
         assert resp.status_code == 200, f"Expected 200, got {resp.status_code}: {resp.text}"
         assert "run_id" in resp.json()
+        _wait_for_run(client, resp.json()["run_id"])
 
     def test_cooldown_zero_disables_wait(self):
         """CONSOLE_COOLDOWN_SECONDS=0 means no cooldown — immediate re-run is allowed."""
@@ -270,11 +293,7 @@ class TestCooldownGuard:
                 resp = client.post("/api/run", json={"master": FAKE_MASTER})
 
         assert resp.status_code == 200
-
-
-# ---------------------------------------------------------------------------
-# § Input validation
-# ---------------------------------------------------------------------------
+        _wait_for_run(client, resp.json()["run_id"])
 
 class TestInputValidation:
     def test_missing_master_field_returns_400(self):
@@ -291,6 +310,66 @@ class TestInputValidation:
         client = _make_client()
         resp = client.post("/api/run", json={"master": "../../.env"})
         assert resp.status_code == 400
+
+    def test_invalid_spec_returns_400(self):
+        client = _make_client()
+        resp = client.post("/api/run", json={"master": FAKE_MASTER, "spec": "../../.env"})
+        assert resp.status_code == 400
+
+    def test_omitted_spec_defaults_to_streamone(self):
+        import frontend.app as app_mod
+        app_mod = _fresh_app()
+        captured = {}
+
+        def _fake_pipeline(master_path, spec_path, *args, **kwargs):
+            captured["spec_path"] = spec_path
+            return {
+                "verdict": "PASS",
+                "blocker_count": 0,
+                "warning_count": 0,
+                "master_id": "TEST",
+                "spec_id": "STREAMONE-DELIVERY-2026",
+                "findings": [],
+                "readiness": {},
+                "india_mode": None,
+                "adk_result": {"tool_logs": []},
+            }
+
+        with patch.object(app_mod, "run_delivery_qc", side_effect=_fake_pipeline):
+            client = _make_client(app_mod)
+            resp = client.post("/api/run", json={"master": FAKE_MASTER})
+        assert resp.status_code == 200
+        _wait_for_run(client, resp.json()["run_id"])
+        assert captured["spec_path"].endswith("streamone.json")
+
+    def test_hallarc_spec_is_passed_to_pipeline(self):
+        import frontend.app as app_mod
+        app_mod = _fresh_app()
+        captured = {}
+
+        def _fake_pipeline(master_path, spec_path, *args, **kwargs):
+            captured["spec_path"] = spec_path
+            return {
+                "verdict": "REJECT",
+                "blocker_count": 6,
+                "warning_count": 0,
+                "master_id": "TEST",
+                "spec_id": "HALLARC-SCREENING-2026",
+                "findings": [],
+                "readiness": {},
+                "india_mode": None,
+                "adk_result": {"tool_logs": []},
+            }
+
+        with patch.object(app_mod, "run_delivery_qc", side_effect=_fake_pipeline):
+            client = _make_client(app_mod)
+            resp = client.post(
+                "/api/run",
+                json={"master": FAKE_MASTER, "spec": "hallarc.json"},
+            )
+        assert resp.status_code == 200
+        _wait_for_run(client, resp.json()["run_id"])
+        assert captured["spec_path"].endswith("hallarc.json")
 
 
 # ---------------------------------------------------------------------------
