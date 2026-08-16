@@ -141,7 +141,8 @@
     }
 
     #master-select:focus-visible,
-    #spec-select:focus-visible {
+    #spec-select:focus-visible,
+    #run-btn:focus-visible {
       outline: 2px solid var(--warn);
       outline-offset: 2px;
     }
@@ -217,6 +218,7 @@
       letter-spacing: 0.14em;
       text-transform: uppercase;
       color: var(--text-muted);
+      margin: 0;
     }
 
     .section-rule {
@@ -474,6 +476,7 @@
       letter-spacing: 0.12em;
       color: var(--text-muted);
       text-transform: uppercase;
+      margin: 0;
     }
 
     .slate-badge {
@@ -488,6 +491,7 @@
       grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
       gap: 1px;
       background: var(--border);
+      margin: 0;
     }
 
     .slate-cell {
@@ -496,6 +500,11 @@
       display: flex;
       flex-direction: column;
       gap: 2px;
+    }
+
+    .slate-cell dt,
+    .slate-cell dd {
+      margin: 0;
     }
 
     .slate-cell-tc {
@@ -624,7 +633,7 @@
       position: relative;
       height: 18px;
       background: #0d0e12;
-      border: 1px solid var(--border-light);
+      border: 1px solid var(--text-muted);
       overflow: hidden;
     }
 
@@ -633,8 +642,8 @@
       top: 0;
       bottom: 0;
       background: rgba(115, 191, 105, 0.15);
-      border-left: 1px dashed rgba(115, 191, 105, 0.5);
-      border-right: 1px dashed rgba(115, 191, 105, 0.5);
+      border-left: 1px solid var(--pass);
+      border-right: 1px solid var(--pass);
     }
 
     .target-center-line {
@@ -656,6 +665,7 @@
       border-radius: 1px;
       z-index: 3;
       transition: left 0.4s ease-out;
+      outline: 1px solid var(--text-primary);
     }
 
     .loudness-marker-pass { background: var(--pass); }
@@ -711,7 +721,7 @@
       position: relative;
       height: 18px;
       background: #0d0e12;
-      border: 1px solid var(--border-light);
+      border: 1px solid var(--text-muted);
       overflow: hidden;
     }
 
@@ -751,6 +761,30 @@
       white-space: nowrap;
     }
 
+    .meter-cue {
+      font-family: var(--mono);
+      font-size: 14px;
+      font-weight: 700;
+      letter-spacing: 0.06em;
+      margin-right: 6px;
+    }
+    .meter-cue-pass { color: var(--pass); }
+    .meter-cue-fail { color: var(--reject); }
+    .meter-cue-pass::before { content: "●"; margin-right: 4px; }
+    .meter-cue-fail::before { content: "■"; margin-right: 4px; }
+
+    .sr-only {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      padding: 0;
+      margin: -1px;
+      overflow: hidden;
+      clip: rect(0, 0, 0, 0);
+      white-space: nowrap;
+      border: 0;
+    }
+
     @media (prefers-reduced-motion: reduce) {
       .loudness-marker { transition: none; }
       .ledger-appear { animation: none; }
@@ -763,52 +797,52 @@
   <div class="page">
 
     <!-- ── DELIVERY QC SLATE ────────────────────────────────────── -->
-    <div class="qc-slate" aria-label="Delivery QC Slate">
+    <div class="qc-slate">
       <div class="slate-header">
-        <span class="slate-title">DELIVERY QC SLATE</span>
+        <h1 class="slate-title">DELIVERY QC SLATE</h1>
         <span class="slate-badge">EBU TECH 3341</span>
       </div>
-      <div class="slate-grid">
+      <dl class="slate-grid">
         <div class="slate-cell">
-          <span class="slate-label">MASTER ID</span>
-          <span id="slate-master" class="slate-val mono">—</span>
+          <dt class="slate-label">MASTER ID</dt>
+          <dd id="slate-master" class="slate-val mono">—</dd>
         </div>
         <div class="slate-cell">
-          <span class="slate-label">SPEC ID</span>
-          <span id="slate-spec" class="slate-val mono">—</span>
+          <dt class="slate-label">SPEC ID</dt>
+          <dd id="slate-spec" class="slate-val mono">—</dd>
         </div>
         <div class="slate-cell">
-          <span class="slate-label">LANGUAGES</span>
-          <span id="slate-langs" class="slate-val mono">—</span>
+          <dt class="slate-label">LANGUAGES</dt>
+          <dd id="slate-langs" class="slate-val mono">—</dd>
         </div>
         <div class="slate-cell">
-          <span class="slate-label">RUN DATE (UTC)</span>
-          <span id="slate-date" class="slate-val mono">—</span>
+          <dt class="slate-label">RUN DATE (UTC)</dt>
+          <dd id="slate-date" class="slate-val mono">—</dd>
         </div>
         <div class="slate-cell slate-cell-tc">
-          <span class="slate-label">ELAPSED TC (24 FPS)</span>
-          <span id="slate-tc" class="slate-val mono tabular tc-display">00:00:00:00</span>
+          <dt class="slate-label">ELAPSED TC (24 FPS)</dt>
+          <dd id="slate-tc" class="slate-val mono tabular tc-display">00:00:00:00</dd>
         </div>
-      </div>
+      </dl>
     </div>
 
     <!-- ── TRIGGER PANEL ────────────────────────────────────────── -->
     <div class="trigger-panel">
-      <span class="trigger-label">Master</span>
-      <select id="master-select" aria-label="Select master file">
+      <label class="trigger-label" for="master-select">Master</label>
+      <select id="master-select">
         {% for m in masters %}
         <option value="{{ m }}">{{ m }}</option>
         {% endfor %}
       </select>
 
-      <span class="trigger-label">Spec</span>
-      <select id="spec-select" aria-label="Select destination spec">
+      <label class="trigger-label" for="spec-select">Spec</label>
+      <select id="spec-select">
         {% for s in specs %}
         <option value="{{ s }}" {% if s == default_spec %}selected{% endif %}>{{ s }}</option>
         {% endfor %}
       </select>
 
-      <button id="run-btn" type="button" aria-label="Run QC pipeline">
+      <button id="run-btn" type="button">
         RUN
       </button>
 
@@ -817,13 +851,15 @@
       </span>
     </div>
 
+    <div id="verdict-live" class="sr-only" role="status" aria-live="polite" aria-atomic="true"></div>
+
     <!-- ── § 1  VERDICT BANNER ──────────────────────────────────── -->
-    <section class="section" aria-label="Verdict">
+    <section class="section">
       <div class="section-header">
-        <span class="section-title">§ 1 · Verdict</span>
+        <h2 class="section-title">§ 1 · Verdict</h2>
       </div>
 
-      <div id="verdict-banner" class="verdict-banner verdict-idle" role="status" aria-live="polite">
+      <div id="verdict-banner" class="verdict-banner verdict-idle">
         <span id="verdict-text">IDLE</span>
         <span id="verdict-detail">No run has been triggered yet.</span>
         <span id="verdict-master"></span>
@@ -831,9 +867,9 @@
     </section>
 
     <!-- ── § 2  AUDIO LOUDNESS & TRUE PEAK ─────────────────────── -->
-    <section class="section" aria-label="Audio loudness and true peak">
+    <section class="section">
       <div class="section-header">
-        <span class="section-title" id="meter-section-title">§ 2 · Audio Loudness &amp; True Peak (EBU Tech 3341)</span>
+        <h2 class="section-title" id="meter-section-title">§ 2 · Audio Loudness &amp; True Peak (EBU Tech 3341)</h2>
       </div>
 
       <div id="meter-container">
@@ -843,20 +879,20 @@
     </section>
 
     <!-- ── § 3  FIX LIST ────────────────────────────────────────── -->
-    <section class="section" aria-label="Fix list">
+    <section class="section">
       <div class="section-header">
-        <span class="section-title">§ 3 · Ranked Fix Plan</span>
+        <h2 class="section-title">§ 3 · Ranked Fix Plan</h2>
       </div>
 
-      <table class="data-table" id="fix-list" aria-label="Fix list">
+      <table class="data-table" id="fix-list">
         <thead>
           <tr>
-            <th>CLAUSE</th>
-            <th>SEVERITY</th>
-            <th>MEASURED</th>
-            <th>EXPECTED</th>
-            <th>LANGUAGE</th>
-            <th>FINDING</th>
+            <th scope="col">CLAUSE</th>
+            <th scope="col">SEVERITY</th>
+            <th scope="col">MEASURED</th>
+            <th scope="col">EXPECTED</th>
+            <th scope="col">LANGUAGE</th>
+            <th scope="col">FINDING</th>
           </tr>
         </thead>
         <tbody id="fix-body"></tbody>
@@ -865,17 +901,17 @@
     </section>
 
     <!-- ── § 4  READINESS GRID ──────────────────────────────────── -->
-    <section class="section" aria-label="Language readiness">
+    <section class="section">
       <div class="section-header">
-        <span class="section-title">§ 4 · Per-Language Readiness</span>
+        <h2 class="section-title">§ 4 · Per-Language Readiness</h2>
       </div>
 
-      <table class="data-table" aria-label="Per-language readiness">
+      <table class="data-table">
         <thead>
           <tr>
-            <th>LANGUAGE</th>
-            <th>READINESS</th>
-            <th style="width:240px">SCORE</th>
+            <th scope="col">LANGUAGE</th>
+            <th scope="col">READINESS</th>
+            <th scope="col" style="width:240px">SCORE</th>
           </tr>
         </thead>
         <tbody id="readiness-body">
@@ -885,18 +921,18 @@
     </section>
 
     <!-- ── § 5  ACTION LEDGER ───────────────────────────────────── -->
-    <section class="section" aria-label="Action ledger">
+    <section class="section">
       <div class="section-header">
-        <span class="section-title">§ 5 · Action Ledger — MCP Writes</span>
+        <h2 class="section-title">§ 5 · Action Ledger — MCP Writes</h2>
       </div>
 
-      <table class="data-table" aria-label="Action ledger">
+      <table class="data-table">
         <thead>
           <tr>
-            <th>TIME (UTC)</th>
-            <th>OPERATION</th>
-            <th>DETAIL</th>
-            <th>LINK</th>
+            <th scope="col">TIME (UTC)</th>
+            <th scope="col">OPERATION</th>
+            <th scope="col">DETAIL</th>
+            <th scope="col">LINK</th>
           </tr>
         </thead>
         <tbody id="ledger-body"></tbody>
