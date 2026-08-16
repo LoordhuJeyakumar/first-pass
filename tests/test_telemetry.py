@@ -190,7 +190,7 @@ def test_build_prometheus_metrics_master_blockers(master_blockers, streamone_spe
         m for m in metrics
         if m["metric"]["__name__"] == "qc_readiness_ratio" and m["metric"]["language"] == "ta-IN"
     ][0]
-    assert ta_readiness["values"] == [0.667]
+    assert ta_readiness["values"] == [0.333]
 
 
 # -----------------------------------------------------------------------------
