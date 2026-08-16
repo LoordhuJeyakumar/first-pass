@@ -71,3 +71,27 @@ Run the orchestrator CLI against synthetic master metadata files in `data/master
 ```bash
 .venv/bin/python -m agents.orchestrator --help
 ```
+
+## Real measurement (file → master JSON → verdict)
+
+`agents/measure.py` generates a short lavfi 1 kHz sine WAV (pcm_s24le), measures integrated loudness and true peak with ffmpeg `ebur128`, and maps ffprobe audio structure into master JSON. Video colour/resolution/frame rate, packaging, timed text, and certification are **declared** — they are not guessed from the WAV.
+
+Requires system `ffmpeg`/`ffprobe` (not a pip package).
+
+### Generate a failing loudness clip and evaluate
+
+```bash
+.venv/bin/python -m agents.measure --generate fail --evaluate \
+  --master-id STRM-MEAS-001 \
+  --declare-language ta-IN \
+  --declare-role original \
+  --declare-timed-text ta-IN \
+  --declare-cert ta-IN=cleared \
+  --declare-naming-ok true \
+  --declare-color-primaries BT.2020 \
+  --declare-transfer PQ \
+  --declare-resolution 3840x2160 \
+  --declare-frame-rate 24
+```
+
+`--generate pass` uses `volume=-6dB` (~-27.1 LUFS). Point the first argument at an existing WAV instead of `--generate` to measure a file. Output prints the ebur128 Summary, the adapter JSON, undeclared-field notices, and the engine verdict.
