@@ -10,7 +10,10 @@
   },
   "audio_tracks": [
     { "language": "ta-IN", "role": "original", "channels": "5.1", "integrated_loudness_lufs": -24.0, "true_peak_dbtp": -1.0 },
-    { "language": "hi-IN", "role": "dub", "channels": "5.1", "integrated_loudness_lufs": -27.1, "true_peak_dbtp": -2.0 }
+    { "language": "hi-IN", "role": "dub", "channels": "5.1", "integrated_loudness_lufs": -27.1, "true_peak_dbtp": -2.0 },
+    { "language": "te-IN", "role": "dub", "channels": "5.1", "integrated_loudness_lufs": -26.5, "true_peak_dbtp": -2.3 },
+    { "language": "kn-IN", "role": "dub", "channels": "5.1", "integrated_loudness_lufs": -27.0, "true_peak_dbtp": -2.0 },
+    { "language": "ml-IN", "role": "dub", "channels": "5.1", "integrated_loudness_lufs": -26.9, "true_peak_dbtp": -2.2 }
   ],
   "timed_text": [
     { "language": "hi-IN", "type": "subtitle", "format": "IMSC1" }
@@ -20,7 +23,10 @@
     "components": ["video", "audio", "timed_text", "metadata"]
   },
   "certification": {
-    "ta-IN": "cleared",
-    "hi-IN": "pending"
+    "ta-IN": "pending",
+    "hi-IN": "pending",
+    "te-IN": "pending",
+    "kn-IN": "pending",
+    "ml-IN": "pending"
   }
 }
