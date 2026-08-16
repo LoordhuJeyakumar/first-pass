@@ -212,6 +212,30 @@ def extract_text_and_tool_args_from_events(agent_events: List[Any]) -> str:
     return "\n".join(extracted_texts)
 
 
+def extract_add_activity_bodies(agent_events: List[Any]) -> str:
+    """Concatenates add_activity_to_incident tool-call body arguments only."""
+    bodies: List[str] = []
+    for event in agent_events:
+        content = getattr(event, "content", None)
+        if content and hasattr(content, "parts"):
+            for part in content.parts:
+                fc = getattr(part, "function_call", None)
+                if fc is not None and getattr(fc, "name", None) == "add_activity_to_incident":
+                    args = getattr(fc, "args", None) or {}
+                    if isinstance(args, dict):
+                        bodies.append(str(args.get("body", "")))
+        if hasattr(event, "get_function_calls"):
+            try:
+                for call in event.get_function_calls() or []:
+                    if getattr(call, "name", None) == "add_activity_to_incident":
+                        args = getattr(call, "args", None) or {}
+                        if isinstance(args, dict):
+                            bodies.append(str(args.get("body", "")))
+            except Exception as exc:
+                logger.error(f"Failed to extract activity bodies from event: {exc}", exc_info=True)
+    return "\n".join(bodies)
+
+
 def check_existing_alert_rule(
     grafana_url: str,
     token: str,
@@ -625,10 +649,12 @@ def inspect_and_log_tool_calls(agent_events: List[Any]) -> List[Dict[str, Any]]:
 def assert_ground_truth_preservation(agent_events: List[Any], findings: List[Dict[str, Any]]) -> None:
     """
     Asserts that every ground-truth clause ID and measured value appears verbatim in the agent's
-    final response or captured tool-call arguments within agent_events.
+    final response or captured tool-call arguments within agent_events, and specifically in
+    add_activity_to_incident bodies (the ranked fix-plan activity).
     Raises AssertionError if any ground truth token is missing.
     """
     combined_output = extract_text_and_tool_args_from_events(agent_events)
+    activity_bodies = extract_add_activity_bodies(agent_events)
 
     for finding in findings:
         truth = format_finding_ground_truth(finding)
@@ -642,6 +668,14 @@ def assert_ground_truth_preservation(agent_events: List[Any], findings: List[Dic
         if measured not in combined_output and measured != "not present":
             raise AssertionError(
                 f"Ground-truth measured value '{measured}' missing from agent response and captured tool calls!"
+            )
+        if clause_id not in activity_bodies:
+            raise AssertionError(
+                f"Ground-truth clause ID '{clause_id}' missing from add_activity_to_incident body!"
+            )
+        if measured not in activity_bodies and measured != "not present":
+            raise AssertionError(
+                f"Ground-truth measured value '{measured}' missing from add_activity_to_incident body!"
             )
 
 
@@ -716,6 +750,7 @@ async def run_adk_orchestration(
             "blocker_count": blocker_count,
             "mapped_severity": mapped_severity,
             "findings": formatted_findings,
+            "ranked_fix_plan": report.get("ranked_fix_plan") or {"jobs": []},
             "room_prefix": "first-pass",
         }
 
@@ -1083,11 +1118,16 @@ async def run_adk_orchestration(
             )
             alerting_instruction = "Skip calling `alerting_manage_rules` for this run because Grafana Ruler API pre-query failed."
 
+        ranked_plan_json = json.dumps(report.get("ranked_fix_plan") or {"jobs": []}, indent=2)
+
         user_prompt = f"""
 A technical master delivery evaluation completed for master ID '{master_id}' with verdict {report.get('verdict')} ({blocker_count} blockers).
 
 Ground Truth Findings:
 {findings_bullets}
+
+Ranked Fix Plan (deterministic JSON — do not reorder, invent, or drop jobs or items):
+{ranked_plan_json}
 
 The Delivery Readiness dashboard (UID: 'first-pass-delivery-readiness') has already been updated directly by Python.
 
@@ -1095,7 +1135,7 @@ Please execute the following tool calls in order:
 
 1. If blocker_count > 0 ({blocker_count} blockers present):
    a. Call `create_incident` tool with title "Delivery Blocker: {master_id} ({blocker_count} Spec Non-Conformances)", severity "{mapped_severity}", roomPrefix "first-pass".
-   b. Call `add_activity_to_incident` tool using the returned incidentID with findings details verbatim.
+   b. Call `add_activity_to_incident` tool using the returned incidentID. Body must be an operator-readable ranked fix plan that follows the Ranked Fix Plan JSON in the same job order, with every clause_id and every measured/expected value copied exactly. Do not reorder, invent, or drop items.
    c. Call `create_annotation` tool with arguments:
       - dashboardUID: "first-pass-delivery-readiness"
       - text: "Violated clauses: {', '.join(clause_ids)}"
@@ -1284,6 +1324,16 @@ if __name__ == "__main__":
     print(f"QC Evaluation Complete: {report['master_id']}")
     print(f"Verdict: {report['verdict']}")
     print(f"Blocker Count: {report['blocker_count']}")
+    plan = report.get("ranked_fix_plan") or {}
+    jobs = plan.get("jobs") or []
+    if jobs:
+        print("Ranked fix plan:")
+        for i, job in enumerate(jobs, start=1):
+            ids = ", ".join(str(c) for c in job.get("clause_ids") or [])
+            print(
+                f"  {i}. {job.get('remediation_stage')} "
+                f"(severity={job.get('severity')}, fanout={job.get('language_fanout')}): {ids}"
+            )
     print("=" * 60)
 
 
