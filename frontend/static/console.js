@@ -26,7 +26,7 @@ let tcAnimationFrame = null;
 // DOM references (resolved after DOMContentLoaded)
 // ---------------------------------------------------------------------------
 
-let elVerdict, elVerdictText, elBlockerCount, elMasterId;
+let elVerdict, elVerdictText, elBlockerCount, elMasterId, elVerdictLive;
 let elFixList, elFixBody, elFixEmpty;
 let elLedgerBody, elLedgerEmpty;
 let elRunBtn, elMasterSelect, elSpecSelect, elStatus;
@@ -43,6 +43,7 @@ document.addEventListener("DOMContentLoaded", () => {
   elVerdictText   = document.getElementById("verdict-text");
   elBlockerCount  = document.getElementById("verdict-detail");
   elMasterId      = document.getElementById("verdict-master");
+  elVerdictLive   = document.getElementById("verdict-live");
   elFixList       = document.getElementById("fix-list");
   elFixBody       = document.getElementById("fix-body");
   elFixEmpty      = document.getElementById("fix-empty");
@@ -74,19 +75,39 @@ document.addEventListener("DOMContentLoaded", () => {
 // Timecode Generator (24 FPS, requestAnimationFrame)
 // ---------------------------------------------------------------------------
 
+function prefersReducedMotion() {
+  return window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+}
+
+function announceVerdict(sentence) {
+  if (!elVerdictLive) return;
+  elVerdictLive.textContent = "";
+  // Force a mutation so polite AT re-announces the same phrase on a re-run.
+  window.requestAnimationFrame(() => {
+    if (elVerdictLive) elVerdictLive.textContent = sentence;
+  });
+}
+
+function formatTimecode(elapsedMs) {
+  const elapsedSec = elapsedMs / 1000.0;
+  const totalFrames = Math.floor(elapsedSec * 24.0);
+  const ff = String(totalFrames % 24).padStart(2, "0");
+  const ss = String(Math.floor(elapsedSec) % 60).padStart(2, "0");
+  const mm = String(Math.floor(elapsedSec / 60) % 60).padStart(2, "0");
+  const hh = String(Math.floor(elapsedSec / 3600)).padStart(2, "0");
+  return `${hh}:${mm}:${ss}:${ff}`;
+}
+
 function startTC() {
   stopTC();
   tcStartTime = Date.now();
+  if (prefersReducedMotion()) {
+    if (elSlateTc) elSlateTc.textContent = "00:00:00:00";
+    return;
+  }
   function tick() {
     if (!tcStartTime) return;
-    const elapsedMs = Date.now() - tcStartTime;
-    const elapsedSec = elapsedMs / 1000.0;
-    const totalFrames = Math.floor(elapsedSec * 24.0);
-    const ff = String(totalFrames % 24).padStart(2, "0");
-    const ss = String(Math.floor(elapsedSec) % 60).padStart(2, "0");
-    const mm = String(Math.floor(elapsedSec / 60) % 60).padStart(2, "0");
-    const hh = String(Math.floor(elapsedSec / 3600)).padStart(2, "0");
-    if (elSlateTc) elSlateTc.textContent = `${hh}:${mm}:${ss}:${ff}`;
+    if (elSlateTc) elSlateTc.textContent = formatTimecode(Date.now() - tcStartTime);
     tcAnimationFrame = requestAnimationFrame(tick);
   }
   tick();
@@ -274,10 +295,17 @@ function renderVerdict(state) {
 
   elMasterId.textContent = masterId ? `Master: ${masterId}` : "";
 
-  // Reset class to force single-shot stamp animation keyframe execution
-  elVerdict.className = "verdict-banner verdict-" +
-    (verdict === "PASS" ? "pass" : verdict === "REJECT" ? "reject" : "idle") +
-    " verdict-stamp-in";
+  const live =
+    verdict === "PASS" ? "Verdict PASS" :
+    verdict === "REJECT" ? `Verdict REJECT, ${blockers} blocker${blockers !== 1 ? "s" : ""}` :
+    verdict === "FAILED" ? "Verdict FAILED" :
+    `Verdict ${verdict}`;
+  announceVerdict(live);
+
+  let cls = "verdict-banner verdict-" +
+    (verdict === "PASS" ? "pass" : verdict === "REJECT" ? "reject" : "idle");
+  if (!prefersReducedMotion()) cls += " verdict-stamp-in";
+  elVerdict.className = cls;
 }
 
 // ---------------------------------------------------------------------------
@@ -365,13 +393,20 @@ function setMeterHeader(spec, rangeNote) {
   elMeterSectionTitle.textContent = parts.join(" · ");
 }
 
+function meterCue(pass) {
+  return pass
+    ? `<span class="meter-cue meter-cue-pass">PASS</span>`
+    : `<span class="meter-cue meter-cue-fail">FAIL</span>`;
+}
+
 function luTrackInner(t) {
   const lu = mapToPct(t.deviationLu, LU_MIN, LU_MAX);
   const tolLeft = mapToPct(-t.tolLu, LU_MIN, LU_MAX).pct;
   const tolRight = mapToPct(t.tolLu, LU_MIN, LU_MAX).pct;
   const zero = mapToPct(0, LU_MIN, LU_MAX).pct;
+  const cue = t.loudPass ? "PASS" : "FAIL";
   return `
-    <div class="scale-track-container" aria-label="${esc(t.lang)} loudness">
+    <div class="scale-track-container" role="img" aria-label="${esc(t.lang)} loudness ${esc(t.loudnessLufs.toFixed(1))} LUFS (${esc(fmtDev(t.deviationLu))}) ${cue}">
       <div class="tolerance-band" style="left:${tolLeft.toFixed(2)}%; width:${(tolRight - tolLeft).toFixed(2)}%;"></div>
       <div class="target-center-line" style="left:${zero.toFixed(2)}%;"></div>
       <div class="loudness-marker ${t.loudPass ? "loudness-marker-pass" : "loudness-marker-fail"}" style="left:${lu.pct.toFixed(2)}%;"></div>
@@ -382,8 +417,9 @@ function luTrackInner(t) {
 function tpTrackInner(t) {
   const tp = mapToPct(t.tpDbtp, TP_MIN, TP_MAX);
   const ceil = mapToPct(t.targetMaxDbtp, TP_MIN, TP_MAX);
+  const cue = t.tpPass ? "PASS" : "FAIL";
   return `
-    <div class="true-peak-track" aria-label="${esc(t.lang)} true peak">
+    <div class="true-peak-track" role="img" aria-label="${esc(t.lang)} true peak ${esc(t.tpDbtp.toFixed(1))} dBTP ${cue}">
       <div class="ceiling-line" style="left:${ceil.pct.toFixed(2)}%;"></div>
       <div class="loudness-marker ${t.tpPass ? "loudness-marker-pass" : "loudness-marker-fail"}" style="left:${tp.pct.toFixed(2)}%;"></div>
       ${offScaleHtml(tp.off)}
@@ -420,13 +456,13 @@ function renderAudioMeters(evaluations) {
     <div class="shared-lang-row">
       <span class="lang">${esc(t.lang)}</span>
       ${luTrackInner(t)}
-      <span class="readout-val ${t.loudPass ? "readout-pass" : "readout-fail"} tabular">${esc(t.loudnessLufs.toFixed(1))} LUFS (${esc(fmtDev(t.deviationLu))})</span>
+      <span class="readout-val ${t.loudPass ? "readout-pass" : "readout-fail"} tabular">${meterCue(t.loudPass)} ${esc(t.loudnessLufs.toFixed(1))} LUFS (${esc(fmtDev(t.deviationLu))})</span>
     </div>`).join("");
   const tpRows = tracks.map((t) => `
     <div class="shared-lang-row">
       <span class="lang">${esc(t.lang)}</span>
       ${tpTrackInner(t)}
-      <span class="readout-val ${t.tpPass ? "readout-pass" : "readout-fail"} tabular">${esc(t.tpDbtp.toFixed(1))} dBTP</span>
+      <span class="readout-val ${t.tpPass ? "readout-pass" : "readout-fail"} tabular">${meterCue(t.tpPass)} ${esc(t.tpDbtp.toFixed(1))} dBTP</span>
     </div>`).join("");
   elMeterGrid.innerHTML = `
     <div class="meter-axis-caption">Relative LU (${LU_MIN.toFixed(0)} … +${LU_MAX.toFixed(0)})</div>
@@ -552,6 +588,7 @@ function resetUI() {
   elBlockerCount.textContent = "";
   elMasterId.textContent = "";
   elVerdict.className = "verdict-banner verdict-idle";
+  announceVerdict("Verdict EVALUATING");
   elFixBody.innerHTML = "";
   elFixEmpty.textContent = "No findings yet. Run the pipeline to populate.";
   elFixEmpty.style.display = "";

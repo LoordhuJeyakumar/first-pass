@@ -433,6 +433,24 @@ class TestLedgerBuilder:
         entries = app_mod._build_ledger_entries(tool_logs)
         assert any(e["operation"] == "Open Incident" for e in entries)
 
+    def test_verified_rule_title_change_in_ledger(self):
+        import frontend.app as app_mod
+        tool_logs = [
+            {
+                "type": "verified_rule",
+                "name": "alerting_manage_rules",
+                "rule_uid": "ffuv7y5eonpc0f",
+                "title": "First Pass blockers (STREAMONE-DELIVERY-2026)",
+                "previous_title": "First Pass - Delivery Blockers Present",
+            }
+        ]
+        with patch.dict("os.environ", {"GRAFANA_URL": "https://your-stack.grafana.net"}):
+            entries = app_mod._build_ledger_entries(tool_logs)
+        assert len(entries) == 1
+        assert "Title changed from" in entries[0]["detail"]
+        assert "First Pass - Delivery Blockers Present" in entries[0]["detail"]
+        assert "STREAMONE-DELIVERY-2026" in entries[0]["detail"]
+
 
 # ---------------------------------------------------------------------------
 # § Thread safety (concurrency)

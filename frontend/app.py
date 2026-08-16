@@ -133,6 +133,11 @@ def _build_ledger_entries(tool_logs: list) -> list:
             if row:
                 entries.append(row)
 
+        else:
+            row = _tool_entry_to_ledger_row(entry, grafana)
+            if row:
+                entries.append(row)
+
     return entries
 
 
@@ -237,12 +242,19 @@ def _tool_entry_to_ledger_row(entry: dict, grafana: str) -> Optional[dict]:
     elif entry_type == "verified_rule":
         rule_uid = entry.get("rule_uid")
         title = entry.get("title", "")
+        previous_title = entry.get("previous_title")
         href = f"{grafana}/alerting/{rule_uid}/view" if rule_uid and grafana else None
+        if previous_title and previous_title != title:
+            detail = f"Title changed from '{previous_title}' to '{title}' (UID: {rule_uid})"
+        elif title:
+            detail = f"Verified rule '{title}' (UID: {rule_uid})"
+        else:
+            detail = f"Rule UID: {rule_uid}"
         return {
             "timestamp": timestamp or _now_iso(),
             "phase": "verified",
             "operation": "Verify Alert Rule",
-            "detail": f"Verified rule '{title}' (UID: {rule_uid})" if title else f"Rule UID: {rule_uid}",
+            "detail": detail,
             "href": href,
             "link_label": "Alert rule",
         }

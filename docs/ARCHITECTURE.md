@@ -100,9 +100,9 @@ Asking the LLM to carry a ~10KB dashboard JSON payload through tool calls proved
 ### Grafana Ruler REST API Read Path
 To guarantee alert rule idempotency without handing complex list-then-branch conditionals to the LLM, Python pre-queries Grafana Cloud directly via the Ruler REST API (`GET /api/ruler/grafana/api/v1/rules/first-pass-qc`) using `GRAFANA_URL` and `GRAFANA_SERVICE_ACCOUNT_TOKEN` before the LLM runs.
 
-- **Purpose**: Determines whether an alert rule titled `"First Pass - Delivery Blockers Present"` already exists.
+- **Purpose**: Determines whether an alert rule already exists for the current `spec_id` (Grafana label `first_pass_spec_id`, then derived UID slug, then a one-time StreamOne legacy-title adopt). Title text is not the identity.
 - **Deterministic Read-Only**: This pre-query is strictly a READ operation.
-- **Non-Branching Agent Instruction**: If the rule exists, Python instructs the LLM with a flat `operation: "update"` containing its `uid`. If absent, Python instructs `operation: "create"`. If the pre-query fails, the alerting instruction is safely skipped for that run.
+- **Non-Branching Agent Instruction**: If the rule exists and content already matches the spec, Python skips the write. If it exists but title, labels, or `annotations.summary` differ, Python instructs the LLM to call `alerting_manage_rules` with `operation: "delete"` on the existing `rule_uid` then `operation: "create"` with the stable spec_id slug (Grafana Cloud `PUT` on `provenance=api` rules returns 403/409; identity stays on `spec_id`, not on a mutable UID). If absent, Python instructs `operation: "create"`. If the pre-query fails, the alerting instruction is safely skipped for that run. The rule title is `First Pass blockers ({spec_id})`; summary lists that spec’s blocker clause ids.
 - **Write Path Security**: All state mutations and writes (`create`/`update`) remain strictly routed through the allowlisted MCP tool (`alerting_manage_rules`).
 
 **Architectural Rationale**: The deterministic engine computes, Python resolves pre-query idempotency, the single bounded agent acts through a small allowlisted MCP tool surface, and every write is audited. A small, verified system is more defensible, auditable, and reliable than an unconstrained crew.

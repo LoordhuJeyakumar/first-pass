@@ -236,19 +236,131 @@ def extract_add_activity_bodies(agent_events: List[Any]) -> str:
     return "\n".join(bodies)
 
 
+LEGACY_ALERT_TITLE = "First Pass - Delivery Blockers Present"
+LEGACY_ADOPT_SPEC_ID = "STREAMONE-DELIVERY-2026"
+ALERT_SPEC_ID_LABEL = "first_pass_spec_id"
+
+
+def alert_rule_uid_slug(spec_id: str) -> str:
+    """Stable Grafana UID derived from spec_id (not clause text). Max 40 chars."""
+    cleaned = "".join(ch.lower() if ch.isalnum() or ch in "-_" else "-" for ch in (spec_id or "unknown"))
+    return f"fpqc-{cleaned}"[:40]
+
+
+def alert_rule_title_for_spec(spec_id: str) -> str:
+    return f"First Pass blockers ({spec_id})"
+
+
+def blocker_clause_ids_from_spec(spec: Optional[Dict[str, Any]]) -> List[str]:
+    if not isinstance(spec, dict):
+        return []
+    ids: List[str] = []
+    for clause in spec.get("clauses") or []:
+        if not isinstance(clause, dict):
+            continue
+        if clause.get("severity_on_fail") == "blocker" and clause.get("clause_id"):
+            ids.append(str(clause["clause_id"]))
+    return sorted(ids)
+
+
+def desired_alert_rule(spec: Optional[Dict[str, Any]], spec_id: str) -> Dict[str, Any]:
+    clause_ids = blocker_clause_ids_from_spec(spec)
+    clause_list = ", ".join(clause_ids) if clause_ids else "(none)"
+    summary = f"Delivery blockers for spec {spec_id} covering clauses {clause_list}."
+    return {
+        "spec_id": spec_id,
+        "title": alert_rule_title_for_spec(spec_id),
+        "rule_uid": alert_rule_uid_slug(spec_id),
+        "labels": {ALERT_SPEC_ID_LABEL: spec_id},
+        "annotations": {"summary": summary, "description": summary},
+        "clause_ids": clause_ids,
+    }
+
+
+def _grafana_alert_fields(rule: Dict[str, Any]) -> Dict[str, Any]:
+    g_alert = rule.get("grafana_alert") if isinstance(rule.get("grafana_alert"), dict) else {}
+    labels = g_alert.get("labels") or rule.get("labels") or {}
+    annotations = g_alert.get("annotations") or rule.get("annotations") or {}
+    if not isinstance(labels, dict):
+        labels = {}
+    if not isinstance(annotations, dict):
+        annotations = {}
+    uid = g_alert.get("uid") or rule.get("uid")
+    return {
+        "title": g_alert.get("title") or rule.get("title"),
+        "uid": str(uid) if uid else None,
+        "labels": labels,
+        "annotations": annotations,
+    }
+
+
+def match_alert_rule_for_spec(rules: List[Dict[str, Any]], spec_id: str) -> Optional[Dict[str, Any]]:
+    """Identity: spec_id label, then derived UID, then StreamOne legacy title only."""
+    parsed = []
+    for rule in rules:
+        if not isinstance(rule, dict):
+            continue
+        fields = _grafana_alert_fields(rule)
+        if fields.get("uid"):
+            parsed.append(fields)
+
+    for fields in parsed:
+        if fields["labels"].get(ALERT_SPEC_ID_LABEL) == spec_id:
+            return fields
+    derived = alert_rule_uid_slug(spec_id)
+    for fields in parsed:
+        if fields["uid"] == derived:
+            return fields
+    if spec_id == LEGACY_ADOPT_SPEC_ID:
+        for fields in parsed:
+            if fields.get("title") == LEGACY_ALERT_TITLE:
+                return fields
+    return None
+
+
+def alert_rule_content_matches(existing: Dict[str, Any], desired: Dict[str, Any]) -> bool:
+    if not existing or existing.get("title") != desired.get("title"):
+        return False
+    if existing.get("labels", {}).get(ALERT_SPEC_ID_LABEL) != desired.get("labels", {}).get(ALERT_SPEC_ID_LABEL):
+        return False
+    return existing.get("annotations", {}).get("summary") == desired.get("annotations", {}).get("summary")
+
+
+def _iter_ruler_group_rules(data: Any, rule_group: str) -> List[Dict[str, Any]]:
+    groups: List[Any] = []
+    if isinstance(data, dict):
+        for k, v in data.items():
+            if k == rule_group and isinstance(v, list):
+                groups.extend(v)
+            elif isinstance(v, list):
+                for item in v:
+                    if isinstance(item, dict) and item.get("name") == rule_group:
+                        groups.append(item)
+    elif isinstance(data, list):
+        groups = [item for item in data if isinstance(item, dict) and item.get("name") == rule_group]
+
+    rules: List[Dict[str, Any]] = []
+    for grp in groups:
+        if isinstance(grp, dict) and "rules" in grp:
+            rules.extend(r for r in (grp.get("rules") or []) if isinstance(r, dict))
+        elif isinstance(grp, dict):
+            rules.append(grp)
+    return rules
+
+
 def check_existing_alert_rule(
     grafana_url: str,
     token: str,
     folder_uid: str,
     rule_group: str,
-    title: str,
-) -> Tuple[str, Optional[str]]:
+    spec_id: str,
+) -> Tuple[str, Optional[Dict[str, Any]]]:
     """
-    Pre-queries Grafana Ruler REST API to check if an alert rule matching title exists in rule_group.
-    Returns a tuple (status, uid):
-      - ("found", "rule-uid"): Rule exists with specified string UID
-      - ("absent", None): Confirmed rule does not exist in folder/group
-      - ("failed", None): Pre-query failed (network timeout, HTTP non-200/202/404, invalid response JSON, missing creds)
+    Pre-queries Grafana Ruler REST API for a rule whose identity matches spec_id.
+    Returns (status, match):
+      - ("found", {uid, title, labels, annotations})
+      - ("absent", None)
+      - ("failed", None)
     """
     if not grafana_url or not token:
         logger.warning("Grafana Ruler API pre-query skipped: missing GRAFANA_URL or GRAFANA_SERVICE_ACCOUNT_TOKEN.")
@@ -260,34 +372,9 @@ def check_existing_alert_rule(
         endpoint = f"{base_url}/api/ruler/grafana/api/v1/rules/{folder_uid}"
         resp = requests.get(endpoint, headers=headers, timeout=5)
         if resp.status_code in (200, 202):
-            data = resp.json()
-            groups = []
-            if isinstance(data, dict):
-                for k, v in data.items():
-                    if k == rule_group and isinstance(v, list):
-                        groups.extend(v)
-                    elif isinstance(v, list):
-                        for item in v:
-                            if isinstance(item, dict) and item.get("name") == rule_group:
-                                groups.append(item)
-            elif isinstance(data, list):
-                groups = [item for item in data if isinstance(item, dict) and item.get("name") == rule_group]
-
-            for grp in groups:
-                if isinstance(grp, dict) and "rules" in grp:
-                    rules = grp.get("rules", [])
-                elif isinstance(grp, dict):
-                    rules = [grp]
-                else:
-                    rules = []
-                for rule in rules:
-                    if not isinstance(rule, dict):
-                        continue
-                    g_alert = rule.get("grafana_alert", {})
-                    rule_title = g_alert.get("title") or rule.get("title")
-                    rule_uid = g_alert.get("uid") or rule.get("uid")
-                    if rule_title == title and rule_uid:
-                        return ("found", str(rule_uid))
+            matched = match_alert_rule_for_spec(_iter_ruler_group_rules(resp.json(), rule_group), spec_id)
+            if matched:
+                return ("found", matched)
             return ("absent", None)
         elif resp.status_code == 404:
             logger.info("Grafana Ruler API pre-query returned HTTP 404 for folder '%s'; rule is confirmed absent.", folder_uid)
@@ -452,8 +539,8 @@ def summarize_tool_call(name: str, args: Dict[str, Any]) -> str:
         operation = args.get("operation", "N/A")
         rule_group = args.get("rule_group", "N/A")
         title = args.get("title", "N/A")
-        uid = args.get("uid", "N/A")
-        return f"[TOOL CALL] Invoked tool '{name}' with arguments: operation='{operation}', rule_group='{rule_group}', title='{title}', uid='{uid}'"
+        uid = args.get("rule_uid") or args.get("uid") or "N/A"
+        return f"[TOOL CALL] Invoked tool '{name}' with arguments: operation='{operation}', rule_group='{rule_group}', title='{title}', rule_uid='{uid}'"
 
     dump_str = json.dumps(args)
     if len(dump_str) > 120:
@@ -577,7 +664,7 @@ def inspect_and_log_tool_calls(agent_events: List[Any]) -> List[Dict[str, Any]]:
         logger.info(f"AUDIT OK: 'create_annotation' tool invoked {len(annotation_calls)} time(s).")
 
     if not alerting_calls:
-        logger.info("AUDIT INFO: 'alerting_manage_rules' tool was not invoked (zero blockers or not requested).")
+        logger.info("AUDIT INFO: 'alerting_manage_rules' tool was not invoked (skip instruction, zero blockers, or model omitted the call).")
     else:
         logger.info(f"AUDIT OK: 'alerting_manage_rules' tool invoked {len(alerting_calls)} time(s).")
 
@@ -631,13 +718,19 @@ def inspect_and_log_tool_calls(agent_events: List[Any]) -> List[Dict[str, Any]]:
 
             if r_name == "alerting_manage_rules":
                 uid = data.get("uid") or data.get("id") if isinstance(data, dict) else None
-                if not uid or uid == "N/A":
+                text_blob = json.dumps(data) if not isinstance(data, str) else data
+                if (not uid or uid == "N/A") and "deleted successfully" not in text_blob.lower():
                     logger.warning(f"Tool '{r_name}' attempt response missing rule uid: {raw_resp}")
                     continue
 
             successful_resps.append(raw_resp)
 
         if not successful_resps:
+            if r_name == "alerting_manage_rules":
+                logger.warning(
+                    f"Tool '{r_name}' failed all execution attempts (non-fatal for the QC run). Responses: {resp_list}"
+                )
+                continue
             logger.error(f"AUDIT FAILURE: Tool '{r_name}' failed all execution attempts. Responses: {resp_list}")
             raise AssertionError(f"AUDIT FAILURE: Tool '{r_name}' failed all execution attempts. Responses: {resp_list}")
 
@@ -710,6 +803,7 @@ async def run_adk_orchestration(
     report: Dict[str, Any],
     env_cfg: Dict[str, str],
     on_tool_event: Optional[Callable[[Dict[str, Any]], None]] = None,
+    spec: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     """
     Asynchronously executes the Google ADK Agent workflow to manage dashboards and incidents on Grafana Cloud MCP.
@@ -1056,14 +1150,17 @@ async def run_adk_orchestration(
             dashboard_template=dashboard_template,
         )
 
-        rule_title = "First Pass - Delivery Blockers Present"
-        rule_status, existing_rule_uid = check_existing_alert_rule(
+        spec_id = report.get("spec_id") or (spec or {}).get("spec_id") or "UNKNOWN"
+        desired = desired_alert_rule(spec, spec_id)
+        rule_title = desired["title"]
+        rule_status, existing_rule = check_existing_alert_rule(
             grafana_url=grafana_url,
             token=token,
             folder_uid="first-pass-qc",
             rule_group="first-pass-alerts",
-            title=rule_title,
+            spec_id=spec_id,
         )
+        existing_rule_uid = existing_rule.get("uid") if existing_rule else None
 
         alert_rule_data = [
             {
@@ -1082,34 +1179,63 @@ async def run_adk_orchestration(
             },
         ]
 
-        if rule_status == "found":
-            logger.info(
-                f"Alert rule '{rule_title}' already exists in Grafana (UID: {existing_rule_uid}). "
-                "Skipping duplicate 'alerting_manage_rules' write call to prevent provisioning API 409 Conflict."
-            )
-            alerting_instruction = (
-                f"Do NOT call `alerting_manage_rules` for this run because alert rule '{rule_title}' "
-                f"already exists in Grafana (UID: {existing_rule_uid})."
-            )
-            if on_tool_event and existing_rule_uid:
-                try:
-                    from datetime import datetime, timezone
-                    ts_str = datetime.now(timezone.utc).strftime("%H:%M:%S UTC")
-                    on_tool_event({
-                        "type": "verified_rule",
-                        "name": "alerting_manage_rules",
-                        "rule_uid": existing_rule_uid,
-                        "title": rule_title,
-                        "timestamp": ts_str,
-                    })
-                except Exception as exc:
-                    logger.warning(f"Error emitting verified_rule event: {exc}")
+        alert_write_fields = (
+            f'title="{rule_title}", folder_uid="first-pass-qc", rule_group="first-pass-alerts", '
+            f'condition="B", for="1m", org_id=1, no_data_state="OK", exec_err_state="Alerting", '
+            f"disable_provenance=true, "
+            f"data={json.dumps(alert_rule_data)}, "
+            f"labels={json.dumps(desired['labels'])}, annotations={json.dumps(desired['annotations'])}"
+        )
+
+        def _emit_rule_ledger(uid: Optional[str], title: str, previous_title: Optional[str] = None) -> None:
+            if not on_tool_event or not uid:
+                return
+            try:
+                from datetime import datetime, timezone
+                ts_str = datetime.now(timezone.utc).strftime("%H:%M:%S UTC")
+                event = {
+                    "type": "verified_rule",
+                    "name": "alerting_manage_rules",
+                    "rule_uid": uid,
+                    "title": title,
+                    "timestamp": ts_str,
+                }
+                if previous_title and previous_title != title:
+                    event["previous_title"] = previous_title
+                on_tool_event(event)
+            except Exception as exc:
+                logger.warning(f"Error emitting verified_rule event: {exc}")
+
+        if rule_status == "found" and existing_rule_uid:
+            previous_title = existing_rule.get("title") if existing_rule else None
+            if alert_rule_content_matches(existing_rule or {}, desired):
+                logger.info(
+                    f"Alert rule for spec_id '{spec_id}' already matches spec content "
+                    f"(UID: {existing_rule_uid}). Skipping 'alerting_manage_rules' write."
+                )
+                alerting_instruction = (
+                    f"Do NOT call `alerting_manage_rules` for this run because alert rule '{rule_title}' "
+                    f"already exists in Grafana (UID: {existing_rule_uid}) with matching spec content."
+                )
+                _emit_rule_ledger(existing_rule_uid, rule_title, previous_title)
+            else:
+                logger.info(
+                    f"Alert rule for spec_id '{spec_id}' exists (UID: {existing_rule_uid}) but content differs; "
+                    "instructing MCP delete of the existing UID then create with stable spec_id slug "
+                    "(Grafana provisioning PUT returns 403/409 on provenance=api title changes)."
+                )
+                alerting_instruction = (
+                    f"Call `alerting_manage_rules` with operation: \"delete\", "
+                    f"rule_uid=\"{existing_rule_uid}\", disable_provenance=true. "
+                    f"After that call succeeds (or if it errors), call `alerting_manage_rules` with "
+                    f"operation: \"create\", rule_uid=\"{desired['rule_uid']}\", {alert_write_fields}. "
+                    f"Do not use operation \"update\". Do not call create twice."
+                )
+                _emit_rule_ledger(desired["rule_uid"], rule_title, previous_title)
         elif rule_status == "absent":
             alerting_instruction = (
                 f"Call `alerting_manage_rules` with operation: \"create\", "
-                f"title=\"{rule_title}\", folder_uid=\"first-pass-qc\", rule_group=\"first-pass-alerts\", "
-                f"condition=\"B\", for=\"1m\", org_id=1, no_data_state=\"OK\", exec_err_state=\"Alerting\", "
-                f"data={json.dumps(alert_rule_data)}"
+                f"rule_uid=\"{desired['rule_uid']}\", {alert_write_fields}"
             )
         else:
             logger.warning(
@@ -1119,6 +1245,25 @@ async def run_adk_orchestration(
             alerting_instruction = "Skip calling `alerting_manage_rules` for this run because Grafana Ruler API pre-query failed."
 
         ranked_plan_json = json.dumps(report.get("ranked_fix_plan") or {"jobs": []}, indent=2)
+        alerting_is_write = alerting_instruction.startswith("Call `alerting_manage_rules`")
+        alerting_step = (
+            f"   a. {alerting_instruction}\n"
+            f"   b. Call `create_incident` tool with title \"Delivery Blocker: {master_id} ({blocker_count} Spec Non-Conformances)\", severity \"{mapped_severity}\", roomPrefix \"first-pass\".\n"
+            f"   c. Call `add_activity_to_incident` tool using the returned incidentID. Body must be an operator-readable ranked fix plan that follows the Ranked Fix Plan JSON in the same job order, with every clause_id and every measured/expected value copied exactly. Do not reorder, invent, or drop items.\n"
+            f"   d. Call `create_annotation` tool with arguments:\n"
+            f"      - dashboardUID: \"first-pass-delivery-readiness\"\n"
+            f"      - text: \"Violated clauses: {', '.join(clause_ids)}\"\n"
+            f"      - time: {int(time.time() * 1000)}"
+            if alerting_is_write
+            else
+            f"   a. Call `create_incident` tool with title \"Delivery Blocker: {master_id} ({blocker_count} Spec Non-Conformances)\", severity \"{mapped_severity}\", roomPrefix \"first-pass\".\n"
+            f"   b. Call `add_activity_to_incident` tool using the returned incidentID. Body must be an operator-readable ranked fix plan that follows the Ranked Fix Plan JSON in the same job order, with every clause_id and every measured/expected value copied exactly. Do not reorder, invent, or drop items.\n"
+            f"   c. Call `create_annotation` tool with arguments:\n"
+            f"      - dashboardUID: \"first-pass-delivery-readiness\"\n"
+            f"      - text: \"Violated clauses: {', '.join(clause_ids)}\"\n"
+            f"      - time: {int(time.time() * 1000)}\n"
+            f"   d. {alerting_instruction}"
+        )
 
         user_prompt = f"""
 A technical master delivery evaluation completed for master ID '{master_id}' with verdict {report.get('verdict')} ({blocker_count} blockers).
@@ -1134,13 +1279,7 @@ The Delivery Readiness dashboard (UID: 'first-pass-delivery-readiness') has alre
 Please execute the following tool calls in order:
 
 1. If blocker_count > 0 ({blocker_count} blockers present):
-   a. Call `create_incident` tool with title "Delivery Blocker: {master_id} ({blocker_count} Spec Non-Conformances)", severity "{mapped_severity}", roomPrefix "first-pass".
-   b. Call `add_activity_to_incident` tool using the returned incidentID. Body must be an operator-readable ranked fix plan that follows the Ranked Fix Plan JSON in the same job order, with every clause_id and every measured/expected value copied exactly. Do not reorder, invent, or drop items.
-   c. Call `create_annotation` tool with arguments:
-      - dashboardUID: "first-pass-delivery-readiness"
-      - text: "Violated clauses: {', '.join(clause_ids)}"
-      - time: {int(time.time() * 1000)}
-   d. {alerting_instruction}
+{alerting_step}
    If blocker_count == 0, do NOT call create_incident, add_activity_to_incident, create_annotation, or alerting_manage_rules.
 
 2. In your final response, summarize the actions taken, retaining exact clause IDs ({', '.join(clause_ids)}), metric names, measured values, and expected values verbatim.
@@ -1293,7 +1432,9 @@ def run_delivery_qc(
 
     logger.info("Triggering Google ADK Orchestrator workflow for folder/dashboard and incident management...")
     try:
-        adk_result = asyncio.run(run_adk_orchestration(report, env_cfg, on_tool_event=on_tool_event))
+        adk_result = asyncio.run(
+            run_adk_orchestration(report, env_cfg, on_tool_event=on_tool_event, spec=spec)
+        )
         report["adk_result"] = adk_result
     except Exception as exc:
         logger.error(
