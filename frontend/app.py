@@ -300,6 +300,7 @@ def _run_pipeline(run_id: str, master_path: str) -> None:
                 "evaluations": list(evaluations),
                 "readiness": dict(readiness) if isinstance(readiness, dict) else {},
                 "india_mode": india_mode,
+                "ranked_fix_plan": report.get("ranked_fix_plan") or {"jobs": []},
                 "error": adk_error,
             })
     except Exception as exc:
@@ -315,6 +316,7 @@ def _run_pipeline(run_id: str, master_path: str) -> None:
                     "findings": [],
                     "readiness": {},
                     "india_mode": None,
+                    "ranked_fix_plan": {"jobs": []},
                     "error": "Quality check could not be completed. The master or spec data is invalid.",
                 })
     finally:
@@ -373,6 +375,7 @@ async def load_fixture(request: Request) -> JSONResponse:
         "evaluations": list(body.get("evaluations", [])),
         "readiness": dict(body.get("readiness", {})),
         "india_mode": body.get("india_mode"),
+        "ranked_fix_plan": body.get("ranked_fix_plan") or {"jobs": []},
         "ledger": list(body.get("ledger", [])),
         "error": body.get("error"),
     }
@@ -444,6 +447,7 @@ async def start_run(request: Request) -> JSONResponse:
             "evaluations": [],
             "readiness": {},
             "india_mode": None,
+            "ranked_fix_plan": {"jobs": []},
             "ledger": [],
             "error": None,
         }
