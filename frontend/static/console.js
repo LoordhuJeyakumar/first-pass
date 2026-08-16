@@ -178,7 +178,7 @@ async function pollRun() {
     stopTC();
     renderVerdict(state);
     renderAudioMeters(state.evaluations || []);
-    renderFixList(state.findings || [], state);
+    renderFixList(state.ranked_fix_plan || { jobs: [] }, state.findings || [], state);
     renderReadiness(state.readiness || {});
     setRunning(false);
     setStatus("Evaluation complete.", "info");
@@ -222,7 +222,7 @@ async function applyRemoteRun(runId) {
   if (state.status === "done" || state.evaluations) {
     renderVerdict(state);
     renderAudioMeters(state.evaluations || []);
-    renderFixList(state.findings || [], state);
+    renderFixList(state.ranked_fix_plan || { jobs: [] }, state.findings || [], state);
     renderReadiness(state.readiness || {});
     setStatus("Fixture loaded.", "info");
   }
@@ -439,10 +439,21 @@ function renderAudioMeters(evaluations) {
 // Fix list
 // ---------------------------------------------------------------------------
 
-function renderFixList(findings, state) {
+function renderFixList(plan, findings, state) {
   elFixBody.innerHTML = "";
+  const jobs = (plan && plan.jobs) || [];
+  const rows = jobs.length
+    ? jobs
+    : (findings || []).length
+      ? [{
+          remediation_stage: "ungrouped",
+          severity: "",
+          language_fanout: "",
+          items: findings,
+        }]
+      : [];
 
-  if (!findings || findings.length === 0) {
+  if (!rows.length) {
     elFixEmpty.style.display = "";
     if (state && state.status === "done" && state.verdict === "PASS") {
       elFixEmpty.textContent = "No non-conformances — all 5 clauses passed";
@@ -455,17 +466,23 @@ function renderFixList(findings, state) {
   }
   elFixEmpty.style.display = "none";
 
-  findings.forEach((f) => {
-    const tr = document.createElement("tr");
-    tr.innerHTML = `
-      <td class="mono clause-id">${esc(f.clause_id || "")}</td>
-      <td><span class="badge badge-${(f.severity || "").toLowerCase()}">${esc((f.severity || "").toUpperCase())}</span></td>
-      <td class="mono tabular">${esc(f.measured || "")}</td>
-      <td class="mono tabular">${esc(f.expected || "")}</td>
-      <td class="lang">${esc(f.language || "—")}</td>
-      <td class="finding-msg">${esc(f.message || "")}</td>
-    `;
-    elFixBody.appendChild(tr);
+  rows.forEach((job) => {
+    const header = document.createElement("tr");
+    header.className = "job-stage-row";
+    header.innerHTML = `<td colspan="6">${esc(job.remediation_stage || "")} · ${esc(job.severity || "")} · fanout ${esc(job.language_fanout)}</td>`;
+    elFixBody.appendChild(header);
+    (job.items || []).forEach((f) => {
+      const tr = document.createElement("tr");
+      tr.innerHTML = `
+        <td class="mono clause-id">${esc(f.clause_id || "")}</td>
+        <td><span class="badge badge-${(f.severity || "").toLowerCase()}">${esc((f.severity || "").toUpperCase())}</span></td>
+        <td class="mono tabular">${esc(f.measured || "")}</td>
+        <td class="mono tabular">${esc(f.expected || "")}</td>
+        <td class="lang">${esc(f.language || "—")}</td>
+        <td class="finding-msg">${esc(f.message || "")}</td>
+      `;
+      elFixBody.appendChild(tr);
+    });
   });
 }
 
