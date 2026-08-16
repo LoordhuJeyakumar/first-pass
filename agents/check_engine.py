@@ -5,7 +5,26 @@ Pure Python evaluation engine for technical master metadata against platform del
 No LLM calls or non-deterministic logic. 100% reproducible and unit-testable.
 """
 
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional, Tuple
+
+# Lead time / external dependency, not pipeline position: start the long pole first.
+STAGE_ORDER: Tuple[str, ...] = (
+    "regulatory",
+    "subtitling",
+    "mix",
+    "conform",
+    "packaging",
+)
+
+_DOMAIN_TO_STAGE = {
+    "audio": "mix",
+    "video": "conform",
+    "timed_text": "subtitling",
+    "packaging": "packaging",
+    "certification": "regulatory",
+}
+
+_SEVERITY_RANK = {"blocker": 0, "warning": 1}
 
 
 def evaluate_audio_loudness(loudness_lufs: float, target: float = -27.0, tolerance: float = 2.0) -> Dict[str, Any]:
@@ -179,6 +198,121 @@ def evaluate_india_mode_gating(certifications: Dict[str, str], original_language
     }
 
 
+def stage_for_domain(domain: Optional[str]) -> str:
+    """Map a clause domain to a remediation stage. timed_text is never packaging."""
+    if not domain:
+        return "unknown"
+    return _DOMAIN_TO_STAGE.get(str(domain), "unknown")
+
+
+def _stage_rank(stage: str) -> int:
+    try:
+        return STAGE_ORDER.index(stage)
+    except ValueError:
+        return len(STAGE_ORDER)
+
+
+def _severity_rank(severity: Optional[str]) -> int:
+    return _SEVERITY_RANK.get(str(severity or ""), 2)
+
+
+def _language_fanout(finding: Dict[str, Any]) -> int:
+    missing = finding.get("missing_languages")
+    if isinstance(missing, list) and missing:
+        return len(missing)
+    return 1
+
+
+def _regulatory_fanout(report: Dict[str, Any], spec: Dict[str, Any]) -> int:
+    india = spec.get("india_mode") or {}
+    required = india.get("required_languages") or []
+    india_report = report.get("india_mode") or {}
+    original = india_report.get("original_language")
+    if isinstance(required, list) and required:
+        dubs = [lang for lang in required if lang != original]
+        return len(dubs) if dubs else 0
+    readiness = report.get("readiness") or {}
+    return len([lang for lang in readiness if lang != original])
+
+
+def _plan_item_from_finding(finding: Dict[str, Any]) -> Dict[str, Any]:
+    stage = stage_for_domain(finding.get("domain"))
+    return {
+        "clause_id": finding.get("clause_id"),
+        "severity": finding.get("severity"),
+        "language": finding.get("language"),
+        "measured": finding.get("measured"),
+        "expected": finding.get("expected"),
+        "message": finding.get("message"),
+        "missing_languages": list(finding.get("missing_languages") or []),
+        "remediation_stage": stage,
+        "language_fanout": _language_fanout(finding),
+    }
+
+
+def _india_gate_plan_item(report: Dict[str, Any], spec: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    india_report = report.get("india_mode")
+    if not isinstance(india_report, dict) or not india_report.get("dubs_blocked"):
+        return None
+    india = spec.get("india_mode") or {}
+    gating_rule = india.get("gating_rule") or "original_language_certification_required_before_dub_clearance"
+    original = india_report.get("original_language")
+    fanout = _regulatory_fanout(report, spec)
+    return {
+        "clause_id": gating_rule,
+        "severity": "blocker",
+        "language": original,
+        "measured": india_report.get("original_status"),
+        "expected": "cleared",
+        "message": india_report.get("message"),
+        "missing_languages": [],
+        "remediation_stage": "regulatory",
+        "language_fanout": fanout,
+    }
+
+
+def _sort_key(item: Dict[str, Any]) -> Tuple[int, int, int]:
+    return (
+        _severity_rank(item.get("severity")),
+        -int(item.get("language_fanout") or 0),
+        _stage_rank(str(item.get("remediation_stage") or "unknown")),
+    )
+
+
+def _group_by_stage(items: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    jobs: List[Dict[str, Any]] = []
+    for item in items:
+        stage = item.get("remediation_stage")
+        if jobs and jobs[-1]["remediation_stage"] == stage:
+            jobs[-1]["items"].append(item)
+            jobs[-1]["clause_ids"].append(item.get("clause_id"))
+            jobs[-1]["language_fanout"] = max(
+                jobs[-1]["language_fanout"], int(item.get("language_fanout") or 0)
+            )
+        else:
+            jobs.append(
+                {
+                    "remediation_stage": stage,
+                    "severity": item.get("severity"),
+                    "language_fanout": int(item.get("language_fanout") or 0),
+                    "clause_ids": [item.get("clause_id")],
+                    "items": [item],
+                }
+            )
+    return jobs
+
+
+def build_ranked_fix_plan(report: Dict[str, Any], spec: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    """Ordered, grouped remediations. Deterministic; no LLM."""
+    spec = spec or {}
+    items = [_plan_item_from_finding(f) for f in report.get("findings") or []]
+    gate = _india_gate_plan_item(report, spec)
+    if gate:
+        items.append(gate)
+    items.sort(key=_sort_key)
+    return {"jobs": _group_by_stage(items)}
+
+
 _SPEC_OPS = {
     "within": ("target", "tolerance", "field"),
     "max": ("target", "field"),
@@ -305,6 +439,7 @@ def _reject_with_spec_errors(
         "india_mode": None,
         "readiness": {},
         "spec_errors": spec_errors,
+        "ranked_fix_plan": {"jobs": []},
     }
 
 
@@ -717,7 +852,7 @@ def evaluate_master_against_spec(master: Dict[str, Any], spec: Dict[str, Any]) -
 
     verdict = "REJECT" if blocker_count > 0 else "PASS"
 
-    return {
+    report = {
         "master_id": master.get("master_id", "UNKNOWN"),
         "spec_id": spec.get("spec_id", "UNKNOWN"),
         "verdict": verdict,
@@ -729,4 +864,6 @@ def evaluate_master_against_spec(master: Dict[str, Any], spec: Dict[str, Any]) -
         "readiness": readiness,
         "spec_errors": [],
     }
+    report["ranked_fix_plan"] = build_ranked_fix_plan(report, spec)
+    return report
 
