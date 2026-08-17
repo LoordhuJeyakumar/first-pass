@@ -856,7 +856,7 @@ async def run_adk_orchestration(
             "title": "Delivery Readiness",
             "schemaVersion": 36,
             "editable": True,
-            "time": {"from": "now-24h", "to": "now"},
+            "time": {"from": "now-14d", "to": "now"},
             "annotations": {
                 "list": [
                     {
