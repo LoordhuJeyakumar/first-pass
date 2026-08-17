@@ -61,7 +61,7 @@ Building on Grafana Cloud provides unified metrics, structured logs, incidents, 
 | **LLM Orchestration** | Gemini 2.5 Flash via Vertex AI | Executes automated operational actions through native ADK tool calling. |
 | **Agent Architecture** | Single Google ADK `LlmAgent` | Bounded execution with explicit `tool_filter` permissions on top of deterministic checks. |
 | **Observability Platform** | Grafana Cloud | Unified platform for metrics, logs, dashboards, incidents, and annotations. |
-| **MCP Server** | Self-hosted `grafana/mcp-grafana` in Docker | Designed for GCE VM deployment (currently executed locally) with `-t streamable-http` and Grafana service-account token authentication. |
+| **MCP Server** | Self-hosted `grafana/mcp-grafana` in Docker | Runs in Docker on the GCE VM, bound to 127.0.0.1:8000, with `streamable-http` transport and Grafana service-account token authentication. |
 | **Agent ↔ MCP Transport** | `McpToolset` + `StreamableHTTPConnectionParams` | Standard static-bearer-token authentication path for unattended systems. |
 | **Metrics Pipeline** | Prometheus Remote-Write | Ingests numerical QC telemetry (`qc_checks`, `qc_loudness_deviation_lufs`, `qc_blockers_current`) with fixed, low-cardinality label sets. |
 | **Logs Pipeline** | Loki Push API | Ingests structured JSON log lines per check finding containing high-cardinality metadata (`run_id`, clause details). |
@@ -75,7 +75,7 @@ Grafana Cloud provides a hosted MCP endpoint. However, the hosted endpoint relie
 
 For automated delivery workflows operating unattended in a CI/CD or delivery pipeline, interactive OAuth is unsuitable. Therefore, First Pass uses a **self-hosted `grafana/mcp-grafana` instance**:
 
-- Designed for Docker deployment on a GCE Virtual Machine (currently executed locally).
+- Runs in Docker on the GCE VM, bound to 127.0.0.1:8000 (loopback only—the operator console on the same host reaches it over localhost).
 - Authenticated using a persistent Grafana Service Account Token (Editor role).
 - Exposed over `streamable-http` transport.
 - Configured with `--enabled-tools` in Docker Compose to restrict MCP server capability to operational domains (`incident`, `dashboard`, `alerting`, `annotations`, `search`, `query`, `folder`, `datasource`), providing defense-in-depth alongside the agent's stricter four-tool `tool_filter` allowlist.
