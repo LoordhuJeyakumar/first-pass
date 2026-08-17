@@ -200,9 +200,12 @@ async function pollRun() {
     stopPolling();
     stopTC();
     renderVerdict(state);
-    renderAudioMeters(state.evaluations || []);
-    renderFixList(state.ranked_fix_plan || { jobs: [] }, state.findings || [], state);
-    renderReadiness(state.readiness || {});
+    safeRender(() => renderAudioMeters(state.evaluations || []), "audioMeters");
+    safeRender(
+      () => renderFixList(state.ranked_fix_plan || { jobs: [] }, state.findings || [], state),
+      "fixList"
+    );
+    safeRender(() => renderReadiness(state.readiness || {}), "readiness");
     setRunning(false);
     setStatus("Evaluation complete.", "info");
   } else if (state.status === "failed") {
@@ -244,9 +247,12 @@ async function applyRemoteRun(runId) {
   updateSlate(state);
   if (state.status === "done" || state.evaluations) {
     renderVerdict(state);
-    renderAudioMeters(state.evaluations || []);
-    renderFixList(state.ranked_fix_plan || { jobs: [] }, state.findings || [], state);
-    renderReadiness(state.readiness || {});
+    safeRender(() => renderAudioMeters(state.evaluations || []), "audioMeters");
+    safeRender(
+      () => renderFixList(state.ranked_fix_plan || { jobs: [] }, state.findings || [], state),
+      "fixList"
+    );
+    safeRender(() => renderReadiness(state.readiness || {}), "readiness");
     setStatus("Fixture loaded.", "info");
   }
 }
@@ -337,37 +343,14 @@ function ticksHtml(values, min, max, unit) {
   }).join("");
 }
 
+const MC = typeof MeterCollect !== "undefined" ? MeterCollect : null;
+
 function collectTracks(evaluations) {
-  const audioEvals = (evaluations || []).filter((e) => e.domain === "audio");
-  const langsMap = {};
-  audioEvals.forEach((e) => {
-    const lang = e.language || "unknown";
-    if (!langsMap[lang]) langsMap[lang] = {};
-    if (e.clause_id === "A-2.1") langsMap[lang].loudness = e;
-    if (e.clause_id === "A-2.2") langsMap[lang].true_peak = e;
-  });
-  const langs = Object.keys(langsMap).sort();
-  const tracks = langs.map((lang) => {
-    const loud = langsMap[lang].loudness || {};
-    const peak = langsMap[lang].true_peak || {};
-    const targetLufs = loud.target_lufs;
-    const tolLu = loud.tolerance_lu;
-    const deviationLu = loud.loudness_deviation_lufs;
-    const loudnessLufs = loud.loudness_lufs;
-    const tpDbtp = peak.true_peak_dbtp;
-    const targetMaxDbtp = peak.target_max_dbtp;
-    const loudPass = targetLufs !== undefined && tolLu !== undefined && deviationLu !== undefined
-      ? Math.abs(deviationLu) <= tolLu
-      : !!loud.passed;
-    const tpPass = tpDbtp !== undefined && targetMaxDbtp !== undefined
-      ? tpDbtp <= targetMaxDbtp
-      : !!peak.passed;
-    return {
-      lang, loud, peak, targetLufs, tolLu, deviationLu, loudnessLufs,
-      tpDbtp, targetMaxDbtp, loudPass, tpPass,
-    };
-  });
-  return { tracks, langs };
+  return MC ? MC.collectTracks(evaluations) : { tracks: [], langs: [] };
+}
+
+function fmtFixed(value, decimals) {
+  return MC ? MC.fmtFixed(value, decimals) : "—";
 }
 
 function specFromTracks(tracks) {
@@ -384,10 +367,10 @@ function setMeterHeader(spec, rangeNote) {
   if (!elMeterSectionTitle) return;
   const parts = ["§ 2 · Audio Loudness & True Peak (EBU Tech 3341)"];
   if (spec.targetLufs !== undefined && spec.tolLu !== undefined) {
-    parts.push(`0 LU = ${spec.targetLufs.toFixed(1)} LUFS ± ${spec.tolLu.toFixed(1)} LU`);
+    parts.push(`0 LU = ${fmtFixed(spec.targetLufs)} LUFS ± ${fmtFixed(spec.tolLu)} LU`);
   }
   if (spec.targetMaxDbtp !== undefined) {
-    parts.push(`ceiling ${spec.targetMaxDbtp.toFixed(1)} dBTP`);
+    parts.push(`ceiling ${fmtFixed(spec.targetMaxDbtp)} dBTP`);
   }
   if (rangeNote) parts.push(rangeNote);
   elMeterSectionTitle.textContent = parts.join(" · ");
@@ -400,36 +383,50 @@ function meterCue(pass) {
 }
 
 function luTrackInner(t) {
-  const lu = mapToPct(t.deviationLu, LU_MIN, LU_MAX);
-  const tolLeft = mapToPct(-t.tolLu, LU_MIN, LU_MAX).pct;
-  const tolRight = mapToPct(t.tolLu, LU_MIN, LU_MAX).pct;
+  const hasDev = t.deviationLu !== undefined && t.deviationLu !== null;
+  const hasTol = t.tolLu !== undefined && t.tolLu !== null;
+  const lu = hasDev ? mapToPct(t.deviationLu, LU_MIN, LU_MAX) : { pct: 50, off: null };
+  const tolLeft = hasTol ? mapToPct(-t.tolLu, LU_MIN, LU_MAX).pct : 0;
+  const tolRight = hasTol ? mapToPct(t.tolLu, LU_MIN, LU_MAX).pct : 0;
   const zero = mapToPct(0, LU_MIN, LU_MAX).pct;
   const cue = t.loudPass ? "PASS" : "FAIL";
+  const tolBand = hasTol
+    ? `<div class="tolerance-band" style="left:${tolLeft.toFixed(2)}%; width:${(tolRight - tolLeft).toFixed(2)}%;"></div>`
+    : "";
+  const marker = hasDev
+    ? `<div class="loudness-marker ${t.loudPass ? "loudness-marker-pass" : "loudness-marker-fail"}" style="left:${lu.pct.toFixed(2)}%;"></div>${offScaleHtml(lu.off)}`
+    : "";
   return `
-    <div class="scale-track-container" role="img" aria-label="${esc(t.lang)} loudness ${esc(t.loudnessLufs.toFixed(1))} LUFS (${esc(fmtDev(t.deviationLu))}) ${cue}">
-      <div class="tolerance-band" style="left:${tolLeft.toFixed(2)}%; width:${(tolRight - tolLeft).toFixed(2)}%;"></div>
+    <div class="scale-track-container" role="img" aria-label="${esc(t.lang)} loudness ${esc(fmtFixed(t.loudnessLufs))} LUFS (${esc(fmtDev(t.deviationLu))}) ${cue}">
+      ${tolBand}
       <div class="target-center-line" style="left:${zero.toFixed(2)}%;"></div>
-      <div class="loudness-marker ${t.loudPass ? "loudness-marker-pass" : "loudness-marker-fail"}" style="left:${lu.pct.toFixed(2)}%;"></div>
-      ${offScaleHtml(lu.off)}
+      ${marker}
     </div>`;
 }
 
 function tpTrackInner(t) {
-  const tp = mapToPct(t.tpDbtp, TP_MIN, TP_MAX);
-  const ceil = mapToPct(t.targetMaxDbtp, TP_MIN, TP_MAX);
+  const hasTp = t.tpDbtp !== undefined && t.tpDbtp !== null;
+  const hasCeil = t.targetMaxDbtp !== undefined && t.targetMaxDbtp !== null;
+  const tp = hasTp ? mapToPct(t.tpDbtp, TP_MIN, TP_MAX) : { pct: 50, off: null };
+  const ceil = hasCeil ? mapToPct(t.targetMaxDbtp, TP_MIN, TP_MAX) : { pct: 100, off: null };
   const cue = t.tpPass ? "PASS" : "FAIL";
+  const ceilLine = hasCeil
+    ? `<div class="ceiling-line" style="left:${ceil.pct.toFixed(2)}%;"></div>`
+    : "";
+  const marker = hasTp
+    ? `<div class="loudness-marker ${t.tpPass ? "loudness-marker-pass" : "loudness-marker-fail"}" style="left:${tp.pct.toFixed(2)}%;"></div>${offScaleHtml(tp.off)}`
+    : "";
   return `
-    <div class="true-peak-track" role="img" aria-label="${esc(t.lang)} true peak ${esc(t.tpDbtp.toFixed(1))} dBTP ${cue}">
-      <div class="ceiling-line" style="left:${ceil.pct.toFixed(2)}%;"></div>
-      <div class="loudness-marker ${t.tpPass ? "loudness-marker-pass" : "loudness-marker-fail"}" style="left:${tp.pct.toFixed(2)}%;"></div>
-      ${offScaleHtml(tp.off)}
+    <div class="true-peak-track" role="img" aria-label="${esc(t.lang)} true peak ${esc(fmtFixed(t.tpDbtp))} dBTP ${cue}">
+      ${ceilLine}
+      ${marker}
     </div>`;
 }
 
 function fmtDev(dev) {
-  if (dev === undefined) return "—";
+  if (dev === undefined || dev === null || Number.isNaN(Number(dev))) return "—";
   const sign = dev > 0 ? "+" : "";
-  return `${sign}${dev.toFixed(1)} LU`;
+  return `${sign}${fmtFixed(dev)} LU`;
 }
 
 function renderAudioMeters(evaluations) {
@@ -456,13 +453,13 @@ function renderAudioMeters(evaluations) {
     <div class="shared-lang-row">
       <span class="lang">${esc(t.lang)}</span>
       ${luTrackInner(t)}
-      <span class="readout-val ${t.loudPass ? "readout-pass" : "readout-fail"} tabular">${meterCue(t.loudPass)} ${esc(t.loudnessLufs.toFixed(1))} LUFS (${esc(fmtDev(t.deviationLu))})</span>
+      <span class="readout-val ${t.loudPass ? "readout-pass" : "readout-fail"} tabular">${meterCue(t.loudPass)} ${esc(fmtFixed(t.loudnessLufs))} LUFS (${esc(fmtDev(t.deviationLu))})</span>
     </div>`).join("");
   const tpRows = tracks.map((t) => `
     <div class="shared-lang-row">
       <span class="lang">${esc(t.lang)}</span>
       ${tpTrackInner(t)}
-      <span class="readout-val ${t.tpPass ? "readout-pass" : "readout-fail"} tabular">${meterCue(t.tpPass)} ${esc(t.tpDbtp.toFixed(1))} dBTP</span>
+      <span class="readout-val ${t.tpPass ? "readout-pass" : "readout-fail"} tabular">${meterCue(t.tpPass)} ${esc(fmtFixed(t.tpDbtp))} dBTP</span>
     </div>`).join("");
   elMeterGrid.innerHTML = `
     <div class="meter-axis-caption">Relative LU (${LU_MIN.toFixed(0)} … +${LU_MAX.toFixed(0)})</div>
@@ -611,6 +608,14 @@ function setStatus(msg, level) {
   if (!elStatus) return;
   elStatus.textContent = msg;
   elStatus.className = "run-status run-status-" + (level || "info");
+}
+
+function safeRender(fn, name) {
+  try {
+    fn();
+  } catch (err) {
+    console.error(`First Pass console: ${name} render failed`, err);
+  }
 }
 
 /** Validates URL scheme (http/https only) to prevent javascript: or unescaped URI injection. */
