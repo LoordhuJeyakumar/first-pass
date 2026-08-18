@@ -36,7 +36,7 @@ A FastAPI + Jinja2 + vanilla JS single-page console in [`frontend/`](frontend/) 
 - **Verdict banner** — PASS (green) or REJECT — N blockers (red), readable from across a room.
 - **Fix list** — every spec non-conformance with clause ID, severity, measured vs expected, language, and message.
 - **Action ledger** — live log of every MCP write the agent performs, each row linking into Grafana (incident, annotation, alert rule).
-- **Trigger button** — runs the full pipeline on demand against any of the three masters. Judges can click RUN to generate fresh telemetry regardless of the 14-day Grafana retention window.
+- **Trigger button** — runs the full pipeline on demand against any of the four masters. Judges can click RUN to generate fresh telemetry regardless of the 14-day Grafana retention window.
 
 ```bash
 # One-time setup:
