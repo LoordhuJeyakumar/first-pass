@@ -1,6 +1,6 @@
 # Evidence & Domain Validation
 
-This document grounds First Pass in domain literature, technical standards, and regulatory frameworks. Key claims regarding film delivery friction, submission rejection rates, regulatory dependencies, existing tool capabilities, and agentic AI deployment risks are mapped to primary industry publications, technical standards, and official regulatory sources.
+This document grounds First Pass in domain literature, technical standards, and regulatory frameworks. Key claims regarding film delivery friction, submission rejection rates, regulatory dependencies, existing tool capabilities, loudness-meter display conventions, and agentic AI deployment risks are mapped to primary industry publications, technical standards, and official regulatory sources.
 
 ---
 
@@ -63,6 +63,29 @@ First Pass evaluates five explicit specification clauses defined in the `StreamO
 - **Specification Constraint**: True peak level of every audio track must not exceed −2.0 dBTP.
 - **Domain Baseline**: Modeled on ITU-R BS.1770-4 true-peak measurement and EBU R128 delivery guidelines.
 - **Realistic Failure Caught**: Inter-sample peaks in high-level localized audio mixes exceeding the −2.0 dBTP ceiling, risking clipping during platform sample-rate conversion. Evaluated as a critical delivery blocker.
+
+### Console Loudness Display — EBU Tech 3341 ‘EBU Mode’ Conventions
+- **Claim**: The operator console follows EBU Mode conventions when it displays integrated loudness on a relative LU scale and Maximum True Peak on a separate scale. The claim is “follows EBU Mode conventions”, not certification and not a formal conformance test against Tech 3341 §2.9 (Calibration, alignment, compliance and accuracy).
+- **Primary Source**: EBU Tech 3341, *‘EBU Mode’ metering to supplement EBU R 128 loudness normalisation*, version 4.0, published 21 Nov 2023 ([`tech.ebu.ch/publications/tech3341`](https://tech.ebu.ch/publications/tech3341)).
+
+**What ‘EBU Mode’ specifies.** Tech 3341 §2.7 (Scales and ranges) allows a relative LU scale whose zero is mapped to the programme target, as an alternative to an absolute LUFS axis. §2.6 (True peak measurement) specifies Maximum True Peak alongside integrated Programme Loudness. §2.8 (Display requirements) names a minimum feature set of three measures:
+
+> an ‘EBU Mode’ compliant meter shall be able to measure and display the three main measures ‘Programme Loudness’, ‘Loudness Range’ and ‘Maximum True Peak Level’.
+
+First Pass displays two of those three — Programme Loudness (integrated loudness, StreamOne clause A-2.1) and Maximum True Peak (clause A-2.2). It does not display Loudness Range (LRA).
+
+**What the console implements.** The meters use a relative LU scale referenced to the delivery specification’s integrated-loudness target rather than an absolute LUFS axis, a tolerance band drawn from that specification’s own tolerance value, and a separate True Peak scale with the specification’s ceiling.
+
+**Deviations from §2.7.** Tech 3341 §2.7 imposes three requirements the console does not meet:
+1. It requires two scales, selectable by the user: the ‘EBU +9 scale’ (−18.0 LU to +9.0 LU) and the ‘EBU +18 scale’ (−36.0 LU to +18.0 LU), with +9 as the default. The console uses a fixed −4.0 to +4.0 LU range.
+2. It states: *“For an ‘EBU Mode’ meter, the target loudness level shall be −23.0 LUFS = 0.0 LU (as defined in EBU R 128).”* The console maps 0 LU to the delivery specification’s target instead: −27.0 LUFS for StreamOne, −24.0 LUFS for HallArc.
+3. It requires offering both the relative and the absolute scale. The console offers the relative scale only.
+
+These are deliberate. A delivery-QC tool evaluating against a platform specification of −27 LUFS must centre on that specification’s target, not on R 128’s broadcast −23; and a ±4 LU window is the useful resolution for tolerance work where ±9 would waste the axis.
+
+**Colours are a product decision.** The same §2.8 that names the three measures also states: *“The physical properties of the loudness meter, such as size, colours, and design, are not part of the ‘EBU Mode’ specification.”* PASS/FAIL colouring on the console is a product decision, not a conformance claim.
+
+**How the numbers get there.** The check engine evaluates integrated loudness and true peak carried in the master's technical metadata. A separate adapter, `agents/measure.py`, measures those values from real media using ffmpeg's ebur128 filter and ffprobe — verified against WAV, MXF and MOV. The demo masters ship as authored metadata.
 
 ---
 
