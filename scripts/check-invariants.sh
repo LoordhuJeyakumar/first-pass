@@ -367,33 +367,63 @@ else
   ERRORS=$((ERRORS + 1))
 fi
 
-# Check 10: All three masters produce documented verdicts
-echo "  [Check 10/16] Verifying all three master files produce documented verdicts via check engine..."
+# Check 10: Every master file produces documented verdicts against both specs
+echo "  [Check 10/16] Verifying documented verdicts for every master file against both specs..."
 C10_OUT=$(python3 -c '
-import json, sys
+import glob, json, os, sys
 from agents.check_engine import evaluate_master_against_spec
 
 try:
-    spec = json.load(open("data/specs/streamone.json", encoding="utf-8"))
-    
-    c_m = json.load(open("data/masters/master_clean.json", encoding="utf-8"))
-    c_rep = evaluate_master_against_spec(c_m, spec)
-    if c_rep["verdict"] != "PASS" or c_rep["blocker_count"] != 0:
-        print("master_clean mismatch: verdict=" + str(c_rep["verdict"]) + ", blockers=" + str(c_rep["blocker_count"]))
+    specs = {
+        name: json.load(open(os.path.join("data", "specs", name), encoding="utf-8"))
+        for name in ("streamone.json", "hallarc.json")
+    }
+    # (verdict, blocker_count, warning_min, warning_exact)
+    expected = {
+        "master_blockers.json": {
+            "hallarc.json": ("REJECT", 6, None, None),
+            "streamone.json": ("REJECT", 3, None, None),
+        },
+        "master_clean.json": {
+            "hallarc.json": ("REJECT", 6, None, None),
+            "streamone.json": ("PASS", 0, None, 0),
+        },
+        "master_warnings.json": {
+            "hallarc.json": ("REJECT", 2, 1, None),
+            "streamone.json": ("PASS", 0, 1, None),
+        },
+        "master_hallarc_clean.json": {
+            "hallarc.json": ("PASS", 0, None, 0),
+            "streamone.json": ("REJECT", 6, None, 0),
+        },
+    }
+    on_disk = sorted(os.path.basename(p) for p in glob.glob(os.path.join("data", "masters", "*.json")))
+    expected_files = sorted(expected)
+    if on_disk != expected_files:
+        print("master file set mismatch: on_disk=" + str(on_disk) + " expected=" + str(expected_files))
         sys.exit(1)
-
-    b_m = json.load(open("data/masters/master_blockers.json", encoding="utf-8"))
-    b_rep = evaluate_master_against_spec(b_m, spec)
-    if b_rep["verdict"] != "REJECT" or b_rep["blocker_count"] != 3:
-        print("master_blockers mismatch: verdict=" + str(b_rep["verdict"]) + ", blockers=" + str(b_rep["blocker_count"]))
-        sys.exit(1)
-
-    w_m = json.load(open("data/masters/master_warnings.json", encoding="utf-8"))
-    w_rep = evaluate_master_against_spec(w_m, spec)
-    if w_rep["verdict"] != "PASS" or w_rep["blocker_count"] != 0 or w_rep["warning_count"] < 1:
-        print("master_warnings mismatch: verdict=" + str(w_rep["verdict"]) + ", blockers=" + str(w_rep["blocker_count"]) + ", warnings=" + str(w_rep["warning_count"]))
-        sys.exit(1)
-
+    for master_name, spec_map in expected.items():
+        master = json.load(open(os.path.join("data", "masters", master_name), encoding="utf-8"))
+        for spec_name, (verdict, blockers, warn_min, warn_exact) in spec_map.items():
+            report = evaluate_master_against_spec(master, specs[spec_name])
+            if report["verdict"] != verdict or report["blocker_count"] != blockers:
+                print(
+                    master_name + " x " + spec_name + " mismatch: verdict="
+                    + str(report["verdict"]) + ", blockers=" + str(report["blocker_count"])
+                )
+                sys.exit(1)
+            if warn_min is not None and report["warning_count"] < warn_min:
+                print(
+                    master_name + " x " + spec_name + " mismatch: warnings="
+                    + str(report["warning_count"]) + " (expected >= " + str(warn_min) + ")"
+                )
+                sys.exit(1)
+            if warn_exact is not None and report["warning_count"] != warn_exact:
+                print(
+                    master_name + " x " + spec_name + " mismatch: warnings="
+                    + str(report["warning_count"]) + " (expected " + str(warn_exact) + ")"
+                )
+                sys.exit(1)
     print("OK")
 except Exception as exc:
     print(f"EXCEPTION:{exc}")
@@ -401,7 +431,7 @@ except Exception as exc:
 ' 2>&1 || true)
 
 if [[ "$C10_OUT" == "OK" ]]; then
-  echo "  ✅ Check 10 passed: All three masters produce documented verdicts."
+  echo "  ✅ Check 10 passed: Documented verdicts for every master file."
 else
   echo "  ❌ ERROR Check 10 failed: $C10_OUT"
   ERRORS=$((ERRORS + 1))
