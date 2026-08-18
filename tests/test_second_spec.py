@@ -71,6 +71,30 @@ def test_master_blockers_against_hallarc_is_reject_six_blockers():
     _india_absent(report)
 
 
+def test_master_hallarc_clean_against_hallarc_is_pass_zero_blockers():
+    report = evaluate_master_against_spec(_master("master_hallarc_clean.json"), _hallarc())
+    assert report["verdict"] == "PASS"
+    assert report["blocker_count"] == 0
+    assert report["warning_count"] == 0
+    assert report["spec_id"] == "HALLARC-SCREENING-2026"
+    assert report["findings"] == []
+    _india_absent(report)
+
+
+def test_master_hallarc_clean_against_streamone_is_reject_six_blockers():
+    report = evaluate_master_against_spec(
+        _master("master_hallarc_clean.json"),
+        _load(STREAMONE_PATH),
+    )
+    assert report["verdict"] == "REJECT"
+    assert report["blocker_count"] == 6
+    clause_ids = [f["clause_id"] for f in report["findings"] if f.get("severity") == "blocker"]
+    assert clause_ids.count("A-2.1") == 5
+    assert clause_ids.count("V-1.3") == 1
+    assert "A-2.2" not in clause_ids
+
+
+
 def test_spec_without_india_mode_emits_no_india_findings():
     spec = {
         "spec_id": "NO-INDIA",
