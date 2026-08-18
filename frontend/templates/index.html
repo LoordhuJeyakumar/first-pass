@@ -830,9 +830,8 @@
   <div class="page">
 
     <header class="page-header">
-      <p class="page-lede">Platform QC rejects film masters that miss a destination’s delivery spec. This checks a master against that spec before you submit.</p>
-      <p class="page-lede">Values are evaluated from the master's technical metadata against the destination spec. A tested ffmpeg ebur128 adapter (<span class="mono">agents/measure.py</span>) measures those values from real media and can generate a master from a media file; the demo masters ship as authored metadata.</p>
-      <p class="page-lede"><span class="mono">streamone.json</span> and <span class="mono">hallarc.json</span> are two delivery destinations with independent clause numbering and different targets, so the same master can pass one and fail the other.</p>
+      <p class="page-lede">First Pass checks a master against a destination spec before you submit. Values are evaluated from the master's technical metadata; ffmpeg's ebur128 filter measures those values from real media; the demo masters ship as authored metadata.</p>
+      <p class="page-lede">StreamOne and HallArc are two delivery destinations with different targets, so the same master can pass one and fail the other.</p>
       <p class="page-links">
         <a id="repo-link" class="orient-link" href="https://github.com/LoordhuJeyakumar/first-pass" target="_blank" rel="noopener noreferrer">GitHub</a>
         {% if grafana_dashboard_url %}
@@ -844,7 +843,7 @@
     <!-- ── DELIVERY QC SLATE ────────────────────────────────────── -->
     <div class="qc-slate">
       <div class="slate-header">
-        <h1 class="slate-title">DELIVERY QC SLATE</h1>
+        <h1 class="slate-title">FIRST PASS</h1>
         <span class="slate-badge">EBU TECH 3341</span>
       </div>
       <dl class="slate-grid">
@@ -876,14 +875,14 @@
       <label class="trigger-label" for="master-select">Master</label>
       <select id="master-select">
         {% for m in masters %}
-        <option value="{{ m }}">{{ m }}</option>
+        <option value="{{ m }}">{{ master_labels.get(m, m) }}</option>
         {% endfor %}
       </select>
 
       <label class="trigger-label" for="spec-select">Spec</label>
       <select id="spec-select">
         {% for s in specs %}
-        <option value="{{ s }}" {% if s == default_spec %}selected{% endif %}>{{ s }}</option>
+        <option value="{{ s }}" {% if s == default_spec %}selected{% endif %}>{{ spec_labels.get(s, s) }}</option>
         {% endfor %}
       </select>
 
@@ -898,10 +897,10 @@
 
     <div id="verdict-live" class="sr-only" role="status" aria-live="polite" aria-atomic="true"></div>
 
-    <!-- ── § 1  VERDICT BANNER ──────────────────────────────────── -->
+    <!-- ── VERDICT BANNER ───────────────────────────────────────── -->
     <section class="section">
       <div class="section-header">
-        <h2 class="section-title">§ 1 · Verdict</h2>
+        <h2 class="section-title">Verdict</h2>
       </div>
 
       <div id="verdict-banner" class="verdict-banner verdict-idle">
@@ -912,22 +911,23 @@
       </div>
     </section>
 
-    <!-- ── § 2  AUDIO LOUDNESS & TRUE PEAK ─────────────────────── -->
+    <!-- ── AUDIO ────────────────────────────────────────────────── -->
     <section class="section">
       <div class="section-header">
-        <h2 class="section-title" id="meter-section-title">§ 2 · Audio Loudness &amp; True Peak (EBU Tech 3341)</h2>
+        <h2 class="section-title" id="meter-section-title">Audio</h2>
+        <p id="meter-spec-subline" class="page-subtitle"></p>
       </div>
 
       <div id="meter-container">
-        <div id="meter-empty" class="empty-state">No audio metrics yet. Run the pipeline to populate.</div>
+        <div id="meter-empty" class="empty-state">No loudness or true-peak readings yet. Click RUN to check this master against the spec.</div>
         <div id="meter-grid" class="meter-grid"></div>
       </div>
     </section>
 
-    <!-- ── § 3  FIX LIST ────────────────────────────────────────── -->
+    <!-- ── FIX PLAN ─────────────────────────────────────────────── -->
     <section class="section">
       <div class="section-header">
-        <h2 class="section-title">§ 3 · Ranked Fix Plan</h2>
+        <h2 class="section-title">Fix Plan</h2>
       </div>
 
       <table class="data-table" id="fix-list">
@@ -943,13 +943,13 @@
         </thead>
         <tbody id="fix-body"></tbody>
       </table>
-      <div id="fix-empty" class="empty-state">No findings yet. Run the pipeline to populate.</div>
+      <div id="fix-empty" class="empty-state">No findings listed. Click RUN to check this master against the spec.</div>
     </section>
 
-    <!-- ── § 4  READINESS GRID ──────────────────────────────────── -->
+    <!-- ── LANGUAGE READINESS ───────────────────────────────────── -->
     <section class="section">
       <div class="section-header">
-        <h2 class="section-title">§ 4 · Per-Language Readiness</h2>
+        <h2 class="section-title">Language Readiness</h2>
       </div>
 
       <table class="data-table">
@@ -961,15 +961,15 @@
           </tr>
         </thead>
         <tbody id="readiness-body">
-          <tr><td colspan="3" class="empty-state">No data yet.</td></tr>
+          <tr><td colspan="3" class="empty-state">No language scores yet. Click RUN to check.</td></tr>
         </tbody>
       </table>
     </section>
 
-    <!-- ── § 5  ACTION LEDGER ───────────────────────────────────── -->
+    <!-- ── AGENT ACTIONS ────────────────────────────────────────── -->
     <section class="section">
       <div class="section-header">
-        <h2 class="section-title">§ 5 · Action Ledger — MCP Writes</h2>
+        <h2 class="section-title">Agent Actions</h2>
       </div>
 
       <table class="data-table">
@@ -983,7 +983,7 @@
         </thead>
         <tbody id="ledger-body"></tbody>
       </table>
-      <div id="ledger-empty" class="empty-state">No agent actions yet. Ledger populates live during a run.</div>
+      <div id="ledger-empty" class="empty-state">No actions yet. They appear here during a run.</div>
     </section>
 
   </div><!-- /.page -->

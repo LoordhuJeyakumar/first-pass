@@ -61,6 +61,18 @@ DEFAULT_SPEC = "streamone.json"
 TEMPLATES_DIR = Path(__file__).parent / "templates"
 STATIC_DIR = Path(__file__).parent / "static"
 
+# Display labels for operator-console dropdowns (option values stay filenames).
+SPEC_LABELS: Dict[str, str] = {
+    "streamone.json": "StreamOne",
+    "hallarc.json": "HallArc",
+}
+MASTER_LABELS: Dict[str, str] = {
+    "master_blockers.json": "Quartz Bend — 5 languages",
+    "master_clean.json": "Bramble Reel — 5 languages",
+    "master_hallarc_clean.json": "Kiln Road — 5 languages",
+    "master_warnings.json": "Harbour Cut — 1 language",
+}
+
 DEFAULT_COOLDOWN_SECONDS = 30
 THREAD_POOL_MAX_WORKERS = 1
 
@@ -385,6 +397,8 @@ async def index(request: Request) -> HTMLResponse:
             "masters": masters,
             "specs": specs,
             "default_spec": DEFAULT_SPEC,
+            "master_labels": MASTER_LABELS,
+            "spec_labels": SPEC_LABELS,
             "grafana_dashboard_url": _dashboard_url(),
         },
     )

@@ -32,7 +32,13 @@ let elLedgerBody, elLedgerEmpty;
 let elRunBtn, elMasterSelect, elSpecSelect, elStatus;
 let elReadinessBody;
 let elSlateMaster, elSlateSpec, elSlateLangs, elSlateDate, elSlateTc;
-let elMeterGrid, elMeterEmpty, elMeterSectionTitle;
+let elMeterGrid, elMeterEmpty, elMeterSectionTitle, elMeterSpecSubline;
+
+const FIX_EMPTY_IDLE =
+  "No findings listed. Click RUN to check this master against the spec.";
+const READINESS_IDLE = "No language scores yet. Click RUN to check.";
+const READINESS_POST_RUN =
+  "Per-language readiness applies only to destinations with regional certification gating.";
 
 // ---------------------------------------------------------------------------
 // Entry point
@@ -65,6 +71,7 @@ document.addEventListener("DOMContentLoaded", () => {
   elMeterGrid     = document.getElementById("meter-grid");
   elMeterEmpty    = document.getElementById("meter-empty");
   elMeterSectionTitle = document.getElementById("meter-section-title");
+  elMeterSpecSubline = document.getElementById("meter-spec-subline");
 
   if (elRunBtn) elRunBtn.addEventListener("click", handleRunClick);
   wireDashboardLink();
@@ -174,7 +181,7 @@ async function handleRunClick() {
   const data = await response.json();
   activeRunId = data.run_id;
   renderedLedgerCount = 0;
-  setStatus("Pipeline evaluating master against spec…", "info");
+  setStatus("Evaluating master against spec…", "info");
   pollTimer = setInterval(pollRun, 1500);
 }
 
@@ -208,7 +215,7 @@ async function pollRun() {
       () => renderFixList(state.ranked_fix_plan || { jobs: [] }, state.findings || [], state),
       "fixList"
     );
-    safeRender(() => renderReadiness(state.readiness || {}), "readiness");
+    safeRender(() => renderReadiness(state.readiness || {}, state), "readiness");
     setRunning(false);
     setStatus("Evaluation complete.", "info");
   } else if (state.status === "failed") {
@@ -258,7 +265,7 @@ async function applyRemoteRun(runId) {
       () => renderFixList(state.ranked_fix_plan || { jobs: [] }, state.findings || [], state),
       "fixList"
     );
-    safeRender(() => renderReadiness(state.readiness || {}), "readiness");
+    safeRender(() => renderReadiness(state.readiness || {}, state), "readiness");
     setStatus("Fixture loaded.", "info");
   }
 }
@@ -370,9 +377,12 @@ function specFromTracks(tracks) {
   };
 }
 
+function setMeterSpecSubline(text) {
+  if (elMeterSpecSubline) elMeterSpecSubline.textContent = text || "";
+}
+
 function setMeterHeader(spec, rangeNote) {
-  if (!elMeterSectionTitle) return;
-  const parts = ["§ 2 · Audio Loudness & True Peak (EBU Tech 3341)"];
+  const parts = [];
   if (spec.targetLufs !== undefined && spec.tolLu !== undefined) {
     parts.push(`0 LU = ${fmtFixed(spec.targetLufs)} LUFS ± ${fmtFixed(spec.tolLu)} LU`);
   }
@@ -380,7 +390,7 @@ function setMeterHeader(spec, rangeNote) {
     parts.push(`ceiling ${fmtFixed(spec.targetMaxDbtp)} dBTP`);
   }
   if (rangeNote) parts.push(rangeNote);
-  elMeterSectionTitle.textContent = parts.join(" · ");
+  setMeterSpecSubline(parts.join(" · "));
 }
 
 function meterCue(pass) {
@@ -443,9 +453,7 @@ function renderAudioMeters(evaluations) {
   const { tracks } = collectTracks(evaluations);
   if (!tracks.length) {
     elMeterEmpty.style.display = "";
-    if (elMeterSectionTitle) {
-      elMeterSectionTitle.textContent = "§ 2 · Audio Loudness & True Peak (EBU Tech 3341)";
-    }
+    setMeterSpecSubline("");
     return;
   }
   elMeterEmpty.style.display = "none";
@@ -502,7 +510,7 @@ function renderFixList(plan, findings, state) {
     } else if (state && state.status === "done") {
       elFixEmpty.textContent = "No non-conformances — 0 findings";
     } else {
-      elFixEmpty.textContent = "No findings yet. Run the pipeline to populate.";
+      elFixEmpty.textContent = FIX_EMPTY_IDLE;
     }
     return;
   }
@@ -532,11 +540,22 @@ function renderFixList(plan, findings, state) {
 // Readiness grid
 // ---------------------------------------------------------------------------
 
-function renderReadiness(readiness) {
+function renderReadinessEmptyRow(message) {
+  const tr = document.createElement("tr");
+  tr.innerHTML = `<td colspan="3" class="empty-state">${esc(message)}</td>`;
+  elReadinessBody.appendChild(tr);
+}
+
+function renderReadiness(readiness, runState) {
   if (!elReadinessBody) return;
   elReadinessBody.innerHTML = "";
-  const langs = Object.keys(readiness).sort();
-  if (!langs.length) return;
+  const langs = Object.keys(readiness || {}).sort();
+  if (!langs.length) {
+    const msg =
+      runState && runState.status === "done" ? READINESS_POST_RUN : READINESS_IDLE;
+    renderReadinessEmptyRow(msg);
+    return;
+  }
 
   langs.forEach((lang) => {
     const ratio = readiness[lang];
@@ -636,16 +655,17 @@ function resetUI() {
   clearPhase();
   announceVerdict("Verdict EVALUATING");
   elFixBody.innerHTML = "";
-  elFixEmpty.textContent = "No findings yet. Run the pipeline to populate.";
+  elFixEmpty.textContent = FIX_EMPTY_IDLE;
   elFixEmpty.style.display = "";
   elLedgerBody.innerHTML = "";
   if (elLedgerEmpty) elLedgerEmpty.style.display = "";
-  if (elReadinessBody) elReadinessBody.innerHTML = "";
+  if (elReadinessBody) {
+    elReadinessBody.innerHTML = "";
+    renderReadinessEmptyRow(READINESS_IDLE);
+  }
   if (elMeterGrid) elMeterGrid.innerHTML = "";
   if (elMeterEmpty) elMeterEmpty.style.display = "";
-  if (elMeterSectionTitle) {
-    elMeterSectionTitle.textContent = "§ 2 · Audio Loudness & True Peak (EBU Tech 3341)";
-  }
+  setMeterSpecSubline("");
 }
 
 function setRunning(running) {

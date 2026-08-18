@@ -25,6 +25,7 @@ dist/
 .DS_Store
 *.swp
 .idea/
+.cursor/
 
 # Local artifacts
 *.log
