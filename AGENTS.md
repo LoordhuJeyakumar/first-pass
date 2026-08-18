@@ -19,13 +19,14 @@
 ## Repository Structure
 
 ```
+README.md    Project overview (repository root)
 agents/      FirstPassOrchestrator ADK agent and deterministic check engine
 mcp/         Docker compose and deployment config for mcp-grafana
 data/        Synthetic master metadata (masters/*.json) and spec definitions (specs/*.json)
 frontend/    Operator web console (FastAPI / Jinja2 / JS)
 scripts/     Verification scripts and disclosure checks
 tests/       pytest test suite for deterministic check engine and telemetry emitters
-docs/        Public documentation (README.md, ARCHITECTURE.md, DOMAIN.md, DISCLOSURE.md)
+docs/        Public documentation (ARCHITECTURE.md, DOMAIN.md, DISCLOSURE.md, evidence.md)
 ```
 
 ## Definition of Done (per Increment)

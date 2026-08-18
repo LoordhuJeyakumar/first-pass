@@ -4,9 +4,9 @@
 
 **Agents that catch a film delivery rejection before the platform does.**
 
-Roughly a quarter of film masters fail platform Quality Control (QC) on first submission — most often for mundane, preventable reasons such as an audio mix delivered at theatrical loudness (~−24 LUFS) against a streaming platform spec requiring ~−27 LUFS. Every rejection incurs redelivery fees and risks missing an announced premiere date.
+Industry commentary from post-production delivery specialists puts first-submission QC failure in the 20–30% range — a directional figure, not an official published statistic ([`docs/evidence.md`](docs/evidence.md)). Most often the cause is mundane and preventable: an audio mix delivered at theatrical loudness (~−24 LUFS) against a streaming platform spec requiring ~−27 LUFS. Every rejection incurs redelivery fees and risks missing an announced premiere date.
 
-First Pass treats delivery readiness as an **observability and automated action problem**. Driven by a deterministic Python check engine and powered by Google ADK with Gemini on Vertex AI, a single bounded agent evaluates technical master metadata against a platform's delivery specification. Python deterministically pushes the **Delivery Readiness** dashboard directly to Grafana Cloud (`POST /api/dashboards/db`), while the agent acts through four allowlisted Grafana MCP tools:
+First Pass treats delivery readiness as an **observability and automated action problem**. Driven by a deterministic Python check engine and powered by Google ADK with Gemini on Vertex AI, a single bounded agent evaluates technical master metadata against a platform's delivery specification. The same master can pass one destination and fail another — clause numbering and targets differ per spec (StreamOne vs HallArc). Python deterministically pushes the **Delivery Readiness** dashboard directly to Grafana Cloud (`POST /api/dashboards/db`), while the agent acts through four allowlisted Grafana MCP tools:
 
 - Opens an **incident** when delivery blockers are detected (`create_incident`).
 - Posts finding details and clause non-conformances to the incident activity log (`add_activity_to_incident`).
@@ -21,11 +21,13 @@ Built for the **Agentic Cinema Hackathon (Grafana Track)**, 2026.
 
 Full details are documented in [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
 
+Sourced claims for domain facts are in [`docs/evidence.md`](docs/evidence.md).
+
 In brief:
 - **Orchestration**: A single Google ADK agent (Python) runs on Google Cloud Platform with Gemini models via Vertex AI.
 - **Grafana MCP Server**: A self-hosted `grafana/mcp-grafana` server running in Docker on a virtual machine, configured with `-t streamable-http` and authenticated using a Grafana service-account token.
 - **Unattended Authentication**: The MCP server is self-hosted rather than using Grafana Cloud's hosted endpoint because the hosted endpoint authenticates via interactive OAuth 2.1 without a machine-token path. Self-hosting with a service-account token allows unattended agents to operate reliably without human manual authentication prompts.
-- **Deterministic Check Engine**: All measurements and clause checks are performed in pure, deterministic Python code. The LLM orchestrates workflows, interprets specs, and executes Grafana write actions, but never invents or calculates numbers.
+- **Deterministic Check Engine**: All clause checks are evaluated in pure, deterministic Python code; the LLM orchestrates workflows, interprets specs, and executes Grafana write actions, but never computes measurements. Integrated loudness and true peak come from a tested ffmpeg ebur128 adapter when measuring real media; the demo masters ship as authored metadata.
 
 For an introduction to film delivery QC terminology, see [`docs/DOMAIN.md`](docs/DOMAIN.md).
 
@@ -36,7 +38,7 @@ A FastAPI + Jinja2 + vanilla JS single-page console in [`frontend/`](frontend/) 
 - **Verdict banner** — PASS (green) or REJECT — N blockers (red), readable from across a room.
 - **Fix list** — every spec non-conformance with clause ID, severity, measured vs expected, language, and message.
 - **Action ledger** — live log of every MCP write the agent performs, each row linking into Grafana (incident, annotation, alert rule).
-- **Trigger button** — runs the full pipeline on demand against any of the four masters. Judges can click RUN to generate fresh telemetry regardless of the 14-day Grafana retention window.
+- **Trigger button** — runs the full pipeline on demand against any of the four masters. Judges can click RUN to generate fresh telemetry regardless of the 14-day Grafana retention window; a scheduled keep-alive also runs the pipeline unattended so the Delivery Readiness dashboard stays populated through judging.
 
 ```bash
 # One-time setup:
@@ -61,7 +63,7 @@ See [`frontend/README.md`](frontend/README.md) for full setup, environment varia
 
 ## Data Provenance
 
-All master metadata and delivery specifications in [`data/`](data/) are **synthetic**, authored specifically for this project and modeled after publicly documented structures (such as MediaInfo/ffprobe structures and public delivery specs). The platform "StreamOne" is entirely fictional. No proprietary studio assets, confidential rejection reports, or copyrighted third-party media assets are used.
+All master metadata and delivery specifications in [`data/`](data/) are **synthetic**, authored specifically for this project and modeled after publicly documented structures (such as MediaInfo/ffprobe structures and public delivery specs). The platforms "StreamOne" and "HallArc" are entirely fictional. No proprietary studio assets, confidential rejection reports, or copyrighted third-party media assets are used.
 
 ## Contributing & Disclosure Rules
 
