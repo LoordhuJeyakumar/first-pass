@@ -157,7 +157,7 @@ The operator console (`frontend/`) is a FastAPI + Jinja2 + vanilla JavaScript si
 
 ### Trigger button
 
-A RUN button lets operators (and judges) re-run the pipeline against any of the three masters without CLI access. Each run produces fresh telemetry in Grafana Cloud, ensuring the dashboard is populated during judging regardless of the 14-day retention window.
+A RUN button lets operators (and judges) re-run the pipeline against any of the four masters without CLI access. Each run produces fresh telemetry in Grafana Cloud, ensuring the dashboard is populated during judging regardless of the 14-day retention window.
 
 ### Guardrails
 
