@@ -102,6 +102,14 @@ def _grafana_base() -> str:
     return os.getenv("GRAFANA_URL", "").rstrip("/")
 
 
+def _dashboard_url() -> str:
+    """Delivery Readiness dashboard URL, or empty when GRAFANA_URL is unset."""
+    base = _grafana_base()
+    if not base:
+        return ""
+    return f"{base}/d/first-pass-delivery-readiness"
+
+
 def _build_ledger_entries(tool_logs: list) -> list:
     """
     Converts raw tool_logs from the orchestrator into ledger rows for the UI.
@@ -258,6 +266,21 @@ def _tool_entry_to_ledger_row(entry: dict, grafana: str) -> Optional[dict]:
             "href": href,
             "link_label": "Alert rule",
         }
+    elif entry_type == "progress":
+        op_labels = {
+            "evaluate": "Evaluate spec",
+            "telemetry": "Publish telemetry",
+            "dashboard": "Publish dashboard",
+            "agent": "Start agent",
+        }
+        return {
+            "timestamp": timestamp or _now_iso(),
+            "phase": "progress",
+            "operation": op_labels.get(name, name),
+            "detail": entry.get("detail", ""),
+            "href": None,
+            "link_label": None,
+        }
     return None
 
 
@@ -358,7 +381,12 @@ async def index(request: Request) -> HTMLResponse:
     return templates.TemplateResponse(
         request=request,
         name="index.html",
-        context={"masters": masters, "specs": specs, "default_spec": DEFAULT_SPEC},
+        context={
+            "masters": masters,
+            "specs": specs,
+            "default_spec": DEFAULT_SPEC,
+            "grafana_dashboard_url": _dashboard_url(),
+        },
     )
 
 
