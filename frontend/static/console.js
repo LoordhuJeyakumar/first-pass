@@ -26,7 +26,7 @@ let tcAnimationFrame = null;
 // DOM references (resolved after DOMContentLoaded)
 // ---------------------------------------------------------------------------
 
-let elVerdict, elVerdictText, elBlockerCount, elMasterId, elVerdictLive;
+let elVerdict, elVerdictText, elBlockerCount, elMasterId, elVerdictLive, elVerdictPhase;
 let elFixList, elFixBody, elFixEmpty;
 let elLedgerBody, elLedgerEmpty;
 let elRunBtn, elMasterSelect, elSpecSelect, elStatus;
@@ -44,6 +44,7 @@ document.addEventListener("DOMContentLoaded", () => {
   elBlockerCount  = document.getElementById("verdict-detail");
   elMasterId      = document.getElementById("verdict-master");
   elVerdictLive   = document.getElementById("verdict-live");
+  elVerdictPhase  = document.getElementById("verdict-phase");
   elFixList       = document.getElementById("fix-list");
   elFixBody       = document.getElementById("fix-body");
   elFixEmpty      = document.getElementById("fix-empty");
@@ -66,6 +67,7 @@ document.addEventListener("DOMContentLoaded", () => {
   elMeterSectionTitle = document.getElementById("meter-section-title");
 
   if (elRunBtn) elRunBtn.addEventListener("click", handleRunClick);
+  wireDashboardLink();
 
   const fixtureRun = new URLSearchParams(window.location.search).get("run");
   if (fixtureRun) applyRemoteRun(fixtureRun);
@@ -199,6 +201,7 @@ async function pollRun() {
   if (state.status === "done") {
     stopPolling();
     stopTC();
+    clearPhase();
     renderVerdict(state);
     safeRender(() => renderAudioMeters(state.evaluations || []), "audioMeters");
     safeRender(
@@ -211,9 +214,12 @@ async function pollRun() {
   } else if (state.status === "failed") {
     stopPolling();
     stopTC();
+    clearPhase();
     setStatus(`Run failed: ${state.error || "unknown error"}`, "error");
     renderVerdict({ verdict: "FAILED", blocker_count: 0, master_id: state.master_id });
     setRunning(false);
+  } else {
+    updatePhaseFromLedger(state.ledger || []);
   }
 }
 
@@ -312,6 +318,7 @@ function renderVerdict(state) {
     (verdict === "PASS" ? "pass" : verdict === "REJECT" ? "reject" : "idle");
   if (!prefersReducedMotion()) cls += " verdict-stamp-in";
   elVerdict.className = cls;
+  clearPhase();
 }
 
 // ---------------------------------------------------------------------------
@@ -576,6 +583,47 @@ function appendNewLedgerRows(ledgerEntries) {
   renderedLedgerCount = ledgerEntries.length;
 }
 
+const PHASE_BY_OPERATION = {
+  "Evaluate spec": "evaluating spec",
+  "Publish telemetry": "publishing telemetry",
+  "Publish dashboard": "publishing dashboard",
+  "Start agent": "agent: connecting",
+  "Open Incident": "agent: opening incident",
+  "Post Activity": "agent: posting activity",
+  "Create Annotation": "agent: annotating dashboard",
+  "Manage Alert Rule": "agent: managing alert rule",
+  "Verify Alert Rule": "agent: verified alert rule",
+};
+
+function phaseLabelFromLedger(ledger) {
+  for (let i = ledger.length - 1; i >= 0; i--) {
+    const entry = ledger[i];
+    if (!entry || entry.phase === "response") continue;
+    const label = PHASE_BY_OPERATION[entry.operation];
+    if (label) return label;
+  }
+  return "";
+}
+
+function updatePhaseFromLedger(ledger) {
+  const label = phaseLabelFromLedger(ledger);
+  if (elVerdictPhase) elVerdictPhase.textContent = label;
+  if (label) setStatus(label, "info");
+}
+
+function clearPhase() {
+  if (elVerdictPhase) elVerdictPhase.textContent = "";
+}
+
+function wireDashboardLink() {
+  const dash = document.getElementById("grafana-dashboard-link");
+  if (!dash) return;
+  const href = safeUrl(dash.getAttribute("data-href"));
+  if (href !== "#") {
+    dash.setAttribute("href", href);
+  }
+}
+
 // ---------------------------------------------------------------------------
 // UI helpers
 // ---------------------------------------------------------------------------
@@ -585,6 +633,7 @@ function resetUI() {
   elBlockerCount.textContent = "";
   elMasterId.textContent = "";
   elVerdict.className = "verdict-banner verdict-idle";
+  clearPhase();
   announceVerdict("Verdict EVALUATING");
   elFixBody.innerHTML = "";
   elFixEmpty.textContent = "No findings yet. Run the pipeline to populate.";
