@@ -7,7 +7,7 @@ FastAPI + Jinja2 + vanilla JS web console. Single page with:
 3. **Per-language readiness grid** — ratio bar per language (audio ∩ subtitles ∩ certification).
 4. **Action ledger** — live log of every MCP write the agent performed, each linking into Grafana.
 
-A **RUN** button triggers the full pipeline against any of the three masters in `data/masters/`.
+A **RUN** button triggers the full pipeline against any of the four masters in `data/masters/`.
 
 ## One-time setup
 
