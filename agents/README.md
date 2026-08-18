@@ -46,10 +46,17 @@ Configure these variables in your `.env` file (copied from `.env.example`). Vari
 
 Run the orchestrator CLI against synthetic master metadata files in `data/masters/` using `.venv/bin/python`:
 
-### Run against Clean Master (PASS)
+### Run against Clean Master (StreamOne PASS)
 ```bash
 .venv/bin/python -m agents.orchestrator --master data/masters/master_clean.json
 ```
+
+### Run against HallArc Clean Master (HallArc PASS)
+```bash
+.venv/bin/python -m agents.orchestrator --master data/masters/master_hallarc_clean.json --spec data/specs/hallarc.json
+```
+
+Against StreamOne this file is REJECT (6 blockers): five `A-2.1` loudness findings (−24 LUFS is +3 LU vs −27) plus `V-1.3` (BT.709 ≠ BT.2020).
 
 ### Run against Blockers Master (REJECT — 3 Blockers)
 ```bash
@@ -61,9 +68,19 @@ Run the orchestrator CLI against synthetic master metadata files in `data/master
 .venv/bin/python -m agents.orchestrator --master data/masters/master_warnings.json
 ```
 
+### Verdict matrix
+
+| Master | HallArc | StreamOne |
+|---|---|---|
+| `master_blockers.json` | REJECT (6 blockers) | REJECT (3 blockers) |
+| `master_clean.json` | REJECT (6 blockers) | PASS (0 blockers) |
+| `master_warnings.json` | REJECT (2 blockers / 1 warning) | PASS (0 blockers / 1 warning) |
+| `master_hallarc_clean.json` | PASS (0 blockers) | REJECT (6 blockers) |
+
 ### CLI Options
 
 - `--master`, `-m`: Path to custom master metadata JSON file.
+- `--spec`: Path to spec JSON file (default: `data/specs/streamone.json`).
 - `--verbose`, `-v`: Enable verbose DEBUG logging.
 - `--plain`: Use plain stdlib logging output instead of Rich formatting.
 - `--help`: Display CLI help message:
