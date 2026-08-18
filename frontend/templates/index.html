@@ -71,11 +71,12 @@
        ========================================================= */
     .page-header {
       display: flex;
-      align-items: baseline;
-      gap: var(--space-md);
-      padding-bottom: var(--space-md);
+      flex-direction: column;
+      align-items: stretch;
+      gap: var(--space-xs);
+      padding-bottom: var(--space-sm);
       border-bottom: 1px solid var(--border);
-      margin-bottom: var(--space-lg);
+      margin-bottom: var(--space-md);
     }
 
     .page-title {
@@ -91,6 +92,27 @@
       font-size: 14px;
       color: var(--text-dim);
     }
+
+    .page-lede {
+      font-size: 14px;
+      line-height: 1.4;
+      color: var(--text-muted);
+      max-width: 78ch;
+    }
+
+    .page-links {
+      display: flex;
+      gap: var(--space-md);
+      font-size: 14px;
+      margin-top: 2px;
+    }
+
+    .orient-link {
+      color: var(--text-primary);
+      text-decoration: none;
+      cursor: pointer;
+    }
+    .orient-link:hover { text-decoration: underline; }
 
     /* =========================================================
        TRIGGER PANEL
@@ -270,6 +292,17 @@
       color: var(--text-dim);
       margin-top: var(--space-xs);
     }
+
+    #verdict-phase {
+      display: block;
+      font-family: var(--mono);
+      font-size: 14px;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--warn);
+    }
+    #verdict-phase:empty { display: none; }
 
     /* =========================================================
        TABLES — spec-sheet style, hairline borders
@@ -796,6 +829,18 @@
 <body>
   <div class="page">
 
+    <header class="page-header">
+      <p class="page-lede">Platform QC rejects film masters that miss a destination’s delivery spec. This checks a master against that spec before you submit.</p>
+      <p class="page-lede">Values are evaluated from the master's technical metadata against the destination spec. A tested ffmpeg ebur128 adapter (<span class="mono">agents/measure.py</span>) measures those values from real media and can generate a master from a media file; the demo masters ship as authored metadata.</p>
+      <p class="page-lede"><span class="mono">streamone.json</span> and <span class="mono">hallarc.json</span> are two delivery destinations with independent clause numbering and different targets, so the same master can pass one and fail the other.</p>
+      <p class="page-links">
+        <a id="repo-link" class="orient-link" href="https://github.com/LoordhuJeyakumar/first-pass" target="_blank" rel="noopener noreferrer">GitHub</a>
+        {% if grafana_dashboard_url %}
+        <a id="grafana-dashboard-link" class="orient-link" href="#" data-href="{{ grafana_dashboard_url }}" target="_blank" rel="noopener noreferrer">Dashboard</a>
+        {% endif %}
+      </p>
+    </header>
+
     <!-- ── DELIVERY QC SLATE ────────────────────────────────────── -->
     <div class="qc-slate">
       <div class="slate-header">
@@ -861,6 +906,7 @@
 
       <div id="verdict-banner" class="verdict-banner verdict-idle">
         <span id="verdict-text">IDLE</span>
+        <span id="verdict-phase"></span>
         <span id="verdict-detail">No run has been triggered yet.</span>
         <span id="verdict-master"></span>
       </div>
