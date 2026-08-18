@@ -1,0 +1,35 @@
+{
+  "master_id": "HALL-2026-001-CLEAN",
+  "title": "Synthetic Feature (HallArc Clean Master)",
+  "video": {
+    "resolution": "1920x1080",
+    "frame_rate": 24.0,
+    "color_primaries": "BT.709",
+    "transfer": "BT.709"
+  },
+  "audio_tracks": [
+    { "language": "ta-IN", "role": "original", "channels": "5.1", "integrated_loudness_lufs": -24.0, "true_peak_dbtp": -2.1 },
+    { "language": "hi-IN", "role": "dub", "channels": "5.1", "integrated_loudness_lufs": -23.8, "true_peak_dbtp": -2.0 },
+    { "language": "te-IN", "role": "dub", "channels": "5.1", "integrated_loudness_lufs": -24.1, "true_peak_dbtp": -2.3 },
+    { "language": "kn-IN", "role": "dub", "channels": "5.1", "integrated_loudness_lufs": -24.0, "true_peak_dbtp": -2.0 },
+    { "language": "ml-IN", "role": "dub", "channels": "5.1", "integrated_loudness_lufs": -23.9, "true_peak_dbtp": -2.2 }
+  ],
+  "timed_text": [
+    { "language": "ta-IN", "type": "subtitle", "format": "IMSC1" },
+    { "language": "hi-IN", "type": "subtitle", "format": "IMSC1" },
+    { "language": "te-IN", "type": "subtitle", "format": "IMSC1" },
+    { "language": "kn-IN", "type": "subtitle", "format": "IMSC1" },
+    { "language": "ml-IN", "type": "subtitle", "format": "IMSC1" }
+  ],
+  "packaging": {
+    "naming_pattern_ok": true,
+    "components": ["video", "audio", "timed_text", "metadata"]
+  },
+  "certification": {
+    "ta-IN": "cleared",
+    "hi-IN": "cleared",
+    "te-IN": "cleared",
+    "kn-IN": "cleared",
+    "ml-IN": "cleared"
+  }
+}
