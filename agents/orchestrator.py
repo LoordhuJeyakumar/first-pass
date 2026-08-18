@@ -799,6 +799,26 @@ def assert_dashboard_metrics_verbatim(
             )
 
 
+def emit_progress(
+    on_tool_event: Optional[Callable[[Dict[str, Any]], None]],
+    name: str,
+    detail: str,
+) -> None:
+    """Forwards a real pipeline-step event to the console ledger callback, if any."""
+    if not on_tool_event:
+        return
+    try:
+        from datetime import datetime, timezone
+        on_tool_event({
+            "type": "progress",
+            "name": name,
+            "detail": detail,
+            "timestamp": datetime.now(timezone.utc).strftime("%H:%M:%S UTC"),
+        })
+    except Exception as exc:
+        logger.warning(f"Error emitting progress event: {exc}")
+
+
 async def run_adk_orchestration(
     report: Dict[str, Any],
     env_cfg: Dict[str, str],
@@ -1143,6 +1163,7 @@ async def run_adk_orchestration(
         )
 
         grafana_url = os.getenv("GRAFANA_URL", "")
+        emit_progress(on_tool_event, "dashboard", "Publishing dashboard")
         ensure_delivery_readiness_dashboard(
             grafana_url=grafana_url,
             token=token,
@@ -1286,6 +1307,7 @@ Please execute the following tool calls in order:
 """
 
         logger.info("Initializing Google ADK Gemini model & LlmAgent (model: gemini-2.5-flash)...")
+        emit_progress(on_tool_event, "agent", "Starting agent")
         creds = get_google_auth_credentials()
         gemini_model = Gemini(model="gemini-2.5-flash", client_kwargs={"credentials": creds})
 
@@ -1415,6 +1437,7 @@ def run_delivery_qc(
     """
     env_cfg = validate_environment()
 
+    emit_progress(on_tool_event, "evaluate", "Evaluating master against spec")
     logger.info(f"Ingesting master metadata: {master_path}")
     master = load_json_file(master_path)
 
@@ -1425,6 +1448,7 @@ def run_delivery_qc(
     report = evaluate_master_against_spec(master, spec)
 
     logger.info("Emitting QC telemetry to Grafana Cloud (Prometheus remote-write & Loki push)...")
+    emit_progress(on_tool_event, "telemetry", "Publishing telemetry")
     telemetry_res = emit_qc_telemetry(report, env_cfg=env_cfg.get("telemetry_cfg"))
     report["telemetry_result"] = telemetry_res
 
