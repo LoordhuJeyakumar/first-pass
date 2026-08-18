@@ -81,9 +81,10 @@ class TestMastersList:
         client = _make_client()
         resp = client.get("/api/masters")
         masters = resp.json()["masters"]
-        # data/masters/ must have at least the three canonical masters
+        # data/masters/ must have the canonical masters including the HallArc PASS file
         assert any("master_clean" in m for m in masters)
         assert any("master_blockers" in m for m in masters)
+        assert any("master_hallarc_clean" in m for m in masters)
 
 
 class TestSpecsList:
@@ -450,6 +451,47 @@ class TestLedgerBuilder:
         assert "Title changed from" in entries[0]["detail"]
         assert "First Pass - Delivery Blockers Present" in entries[0]["detail"]
         assert "STREAMONE-DELIVERY-2026" in entries[0]["detail"]
+
+    def test_progress_event_becomes_ledger_row_without_href(self):
+        import frontend.app as app_mod
+        row = app_mod._tool_entry_to_ledger_row(
+            {
+                "type": "progress",
+                "name": "dashboard",
+                "detail": "Publishing dashboard",
+                "timestamp": "12:00:00 UTC",
+            },
+            "https://your-stack.grafana.net",
+        )
+        assert row is not None
+        assert row["phase"] == "progress"
+        assert row["operation"] == "Publish dashboard"
+        assert row["detail"] == "Publishing dashboard"
+        assert row["href"] is None
+        assert row["link_label"] is None
+
+
+# ---------------------------------------------------------------------------
+# § Idle page orientation (judge-facing copy)
+# ---------------------------------------------------------------------------
+
+class TestIndexOrientation:
+    def test_idle_page_states_accurate_provenance_and_github(self):
+        client = _make_client()
+        with patch.dict("os.environ", {"GRAFANA_URL": ""}, clear=False):
+            html = client.get("/").text
+        assert "evaluated from the master's technical metadata" in html
+        assert "demo masters ship as authored metadata" in html
+        assert 'href="https://github.com/LoordhuJeyakumar/first-pass"' in html
+        assert "grafana-dashboard-link" not in html
+
+    def test_dashboard_link_uses_env_url_not_as_visible_text(self):
+        client = _make_client()
+        with patch.dict("os.environ", {"GRAFANA_URL": "https://your-stack.grafana.net"}, clear=False):
+            html = client.get("/").text
+        assert 'data-href="https://your-stack.grafana.net/d/first-pass-delivery-readiness"' in html
+        assert ">Dashboard</a>" in html
+        assert "your-stack.grafana.net</a>" not in html
 
 
 # ---------------------------------------------------------------------------
