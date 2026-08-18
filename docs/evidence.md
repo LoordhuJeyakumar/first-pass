@@ -83,6 +83,8 @@ First Pass displays two of those three — Programme Loudness (integrated loudne
 
 These are deliberate. A delivery-QC tool evaluating against a platform specification of −27 LUFS must centre on that specification’s target, not on R 128’s broadcast −23; and a ±4 LU window is the useful resolution for tolerance work where ±9 would waste the axis.
 
+Tech 3341 §2 (‘EBU Mode’ section intro) allows a meter to provide alternatives to any or all of the EBU Mode specifications, but states: *“when such alternatives are selected, the meter will no longer be in ‘EBU Mode’.”* Because First Pass uses a fixed −4.0 to +4.0 LU window and maps 0 LU to the delivery specification’s target rather than −23.0 LUFS, the console is by the standard’s own definition not an EBU Mode meter — it follows EBU Mode display conventions adapted for delivery QC.
+
 **Colours are a product decision.** The same §2.8 that names the three measures also states: *“The physical properties of the loudness meter, such as size, colours, and design, are not part of the ‘EBU Mode’ specification.”* PASS/FAIL colouring on the console is a product decision, not a conformance claim.
 
 **How the numbers get there.** The check engine evaluates integrated loudness and true peak carried in the master's technical metadata. A separate adapter, `agents/measure.py`, measures those values from real media using ffmpeg's ebur128 filter and ffprobe — verified against WAV, MXF and MOV. The demo masters ship as authored metadata.
