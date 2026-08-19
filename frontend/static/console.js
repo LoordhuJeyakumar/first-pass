@@ -48,6 +48,9 @@ const DURATION_OPS = {
   "Start agent": "AGENT",
 };
 
+const METER_SUBLINE_GIST =
+  "how far each language sits from this destination's loudness target";
+
 // ---------------------------------------------------------------------------
 // Entry point
 // ---------------------------------------------------------------------------
@@ -85,6 +88,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
   if (elRunBtn) elRunBtn.addEventListener("click", handleRunClick);
   wireDashboardLink();
+  wireGlossary();
 
   const fixtureRun = new URLSearchParams(window.location.search).get("run");
   if (fixtureRun) applyRemoteRun(fixtureRun);
@@ -453,7 +457,7 @@ function setMeterSpecSubline(text) {
 }
 
 function setMeterHeader(spec, rangeNote) {
-  const parts = [];
+  const parts = [METER_SUBLINE_GIST];
   if (spec.targetLufs !== undefined && spec.tolLu !== undefined) {
     parts.push(`0 LU = ${fmtFixed(spec.targetLufs)} LUFS ± ${fmtFixed(spec.tolLu)} LU`);
   }
@@ -549,7 +553,7 @@ function renderAudioMeters(evaluations) {
   const { tracks } = collectTracks(evaluations);
   if (!tracks.length) {
     elMeterEmpty.style.display = "";
-    setMeterSpecSubline("");
+    setMeterSpecSubline(METER_SUBLINE_GIST);
     return;
   }
   elMeterEmpty.style.display = "none";
@@ -740,6 +744,44 @@ function wireDashboardLink() {
   }
 }
 
+function positionGloss(btn, pop) {
+  const r = btn.getBoundingClientRect();
+  pop.style.top = `${Math.round(r.bottom + 6)}px`;
+  pop.style.left = `${Math.round(r.left)}px`;
+}
+
+function hideOpenGlossaries() {
+  document.querySelectorAll(".gloss-pop").forEach((pop) => {
+    if (typeof pop.hidePopover === "function" && pop.matches(":popover-open")) {
+      pop.hidePopover();
+    }
+  });
+}
+
+function wireGlossary() {
+  document.querySelectorAll(".gloss-trigger[popovertarget]").forEach((btn) => {
+    const pop = document.getElementById(btn.getAttribute("popovertarget"));
+    if (!pop || typeof pop.showPopover !== "function") return;
+    pop.addEventListener("toggle", (e) => {
+      btn.setAttribute("aria-expanded", e.newState === "open" ? "true" : "false");
+      if (e.newState === "open") positionGloss(btn, pop);
+    });
+    if (!window.matchMedia("(hover: hover)").matches) return;
+    const show = () => {
+      if (!pop.matches(":popover-open")) pop.showPopover();
+    };
+    const hide = () => {
+      if (pop.matches(":popover-open")) pop.hidePopover();
+    };
+    btn.addEventListener("mouseenter", show);
+    btn.addEventListener("mouseleave", hide);
+    pop.addEventListener("mouseenter", show);
+    pop.addEventListener("mouseleave", hide);
+  });
+  window.addEventListener("scroll", hideOpenGlossaries, { passive: true });
+  window.addEventListener("resize", hideOpenGlossaries);
+}
+
 // ---------------------------------------------------------------------------
 // UI helpers
 // ---------------------------------------------------------------------------
@@ -763,7 +805,7 @@ function resetUI() {
   }
   if (elMeterGrid) elMeterGrid.innerHTML = "";
   if (elMeterEmpty) elMeterEmpty.style.display = "";
-  setMeterSpecSubline("");
+  setMeterSpecSubline(METER_SUBLINE_GIST);
   if (elDurationStrip) {
     elDurationStrip.hidden = true;
     elDurationStrip.textContent = "";

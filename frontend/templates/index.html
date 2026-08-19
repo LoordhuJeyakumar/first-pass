@@ -173,8 +173,18 @@
       color: var(--text-muted);
       text-decoration: none;
       cursor: pointer;
+      display: inline-flex;
+      flex-direction: row-reverse;
+      align-items: center;
+      gap: 4px;
     }
     .orient-link:hover { text-decoration: underline; color: var(--text-primary); }
+    .orient-link svg {
+      width: 12px;
+      height: 12px;
+      color: var(--text-dim);
+      flex-shrink: 0;
+    }
 
     .slate-badge {
       font-family: var(--mono);
@@ -263,6 +273,58 @@
       letter-spacing: 0.08em;
     }
 
+    .gloss-term {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+    }
+
+    .gloss-trigger {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 24px;
+      height: 24px;
+      margin: -6px -4px;
+      padding: 0;
+      border: none;
+      background: transparent;
+      color: var(--text-dim);
+      cursor: pointer;
+      letter-spacing: 0;
+      text-transform: none;
+      flex-shrink: 0;
+      transition: color 0.15s;
+    }
+    .gloss-trigger:hover,
+    .gloss-trigger:focus-visible {
+      color: var(--text-muted);
+    }
+    .gloss-trigger svg {
+      display: block;
+      width: 13px;
+      height: 13px;
+    }
+
+    .gloss-pop {
+      inset: unset;
+      margin: 0;
+      max-width: 36ch;
+      padding: var(--space-sm) var(--space-md);
+      background: var(--bg-panel);
+      color: var(--text-primary);
+      border: 1px solid var(--border-light);
+      border-radius: 2px;
+      font-family: var(--font-ui);
+      font-size: 13px;
+      font-weight: 400;
+      letter-spacing: 0;
+      text-transform: none;
+      line-height: 1.5;
+      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.45);
+    }
+    .gloss-pop p + p { margin-top: var(--space-sm); }
+
     #master-select,
     #spec-select {
       font-family: var(--mono);
@@ -292,7 +354,8 @@
 
     #master-select:focus-visible,
     #spec-select:focus-visible,
-    #run-btn:focus-visible {
+    #run-btn:focus-visible,
+    .gloss-trigger:focus-visible {
       outline: 2px solid var(--warn);
       outline-offset: 2px;
     }
@@ -429,6 +492,9 @@
       text-transform: uppercase;
       color: var(--text-muted);
       margin: 0;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
     }
 
     .section-rule {
@@ -879,6 +945,7 @@
       .verdict-stamp-in { animation: none; }
       .burn-in { transition: none; }
       #run-btn { transition: none; }
+      .gloss-trigger { transition: none; }
     }
   </style>
 </head>
@@ -908,9 +975,9 @@
     <div class="burn-br">
       <span class="slate-badge">EBU TECH 3341</span>
       <p class="page-links">
-        <a id="repo-link" class="orient-link" href="https://github.com/LoordhuJeyakumar/first-pass" target="_blank" rel="noopener noreferrer">Source</a>
+        <a id="repo-link" class="orient-link" href="https://github.com/LoordhuJeyakumar/first-pass" target="_blank" rel="noopener noreferrer"><svg viewBox="0 0 24 24" width="12" height="12" aria-hidden="true" focusable="false"><path fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" d="M14 5h5v5M19 5l-9 9M19 13v6a1 1 0 01-1 1H6a1 1 0 01-1-1V6a1 1 0 011-1h6"/></svg>Source</a>
         {% if grafana_dashboard_url %}
-        <a id="grafana-dashboard-link" class="orient-link" href="#" data-href="{{ grafana_dashboard_url }}" target="_blank" rel="noopener noreferrer">Dashboard</a>
+        <a id="grafana-dashboard-link" class="orient-link" href="#" data-href="{{ grafana_dashboard_url }}" target="_blank" rel="noopener noreferrer"><svg viewBox="0 0 24 24" width="12" height="12" aria-hidden="true" focusable="false"><path fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" d="M14 5h5v5M19 5l-9 9M19 13v6a1 1 0 01-1 1H6a1 1 0 01-1-1V6a1 1 0 011-1h6"/></svg>Dashboard</a>
         {% endif %}
       </p>
     </div>
@@ -930,14 +997,20 @@
 
     <!-- ── TRIGGER PANEL ────────────────────────────────────────── -->
     <div class="trigger-panel">
-      <label class="trigger-label" for="master-select">Master</label>
+      <span class="gloss-term">
+        <label class="trigger-label" for="master-select">Master</label>
+        <button type="button" class="gloss-trigger" popovertarget="gloss-master" popovertargetaction="show" aria-expanded="false" aria-label="What is a master?"><svg viewBox="0 0 24 24" width="13" height="13" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M12 11v5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><circle cx="12" cy="8" r="1" fill="currentColor"/></svg></button>
+      </span>
       <select id="master-select">
         {% for m in masters %}
         <option value="{{ m }}">{{ master_labels.get(m, m) }}</option>
         {% endfor %}
       </select>
 
-      <label class="trigger-label" for="spec-select">Spec</label>
+      <span class="gloss-term">
+        <label class="trigger-label" for="spec-select">Spec</label>
+        <button type="button" class="gloss-trigger" popovertarget="gloss-spec" popovertargetaction="show" aria-expanded="false" aria-label="What is a spec?"><svg viewBox="0 0 24 24" width="13" height="13" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M12 11v5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><circle cx="12" cy="8" r="1" fill="currentColor"/></svg></button>
+      </span>
       <select id="spec-select">
         {% for s in specs %}
         <option value="{{ s }}" {% if s == default_spec %}selected{% endif %}>{{ spec_labels.get(s, s) }}</option>
@@ -968,8 +1041,8 @@
           <!-- ── AUDIO ────────────────────────────────────────────────── -->
           <section class="section">
             <div class="section-header">
-              <h3 class="section-title" id="meter-section-title">Audio</h3>
-              <p id="meter-spec-subline" class="page-subtitle"></p>
+              <h3 class="section-title" id="meter-section-title">Audio<button type="button" class="gloss-trigger" popovertarget="gloss-audio" popovertargetaction="show" aria-expanded="false" aria-label="What is Audio?"><svg viewBox="0 0 24 24" width="13" height="13" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M12 11v5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><circle cx="12" cy="8" r="1" fill="currentColor"/></svg></button></h3>
+              <p id="meter-spec-subline" class="page-subtitle">how far each language sits from this destination's loudness target</p>
             </div>
 
             <div id="meter-container">
@@ -981,8 +1054,8 @@
           <!-- ── FIX PLAN ─────────────────────────────────────────────── -->
           <section class="section">
             <div class="section-header">
-              <h3 class="section-title">Fix Plan</h3>
-              <p class="page-subtitle">ranked jobs · every non-conformance</p>
+              <h3 class="section-title">Fix Plan<button type="button" class="gloss-trigger" popovertarget="gloss-fix" popovertargetaction="show" aria-expanded="false" aria-label="What is the Fix Plan?"><svg viewBox="0 0 24 24" width="13" height="13" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M12 11v5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><circle cx="12" cy="8" r="1" fill="currentColor"/></svg></button></h3>
+              <p class="page-subtitle">what to fix, and in what order — longest lead time first</p>
             </div>
 
             <table class="data-table" id="fix-list">
@@ -1004,8 +1077,8 @@
           <!-- ── LANGUAGE READINESS ───────────────────────────────────── -->
           <section class="section">
             <div class="section-header">
-              <h3 class="section-title">Language Readiness</h3>
-              <p class="page-subtitle">per-language score · regional certification gating</p>
+              <h3 class="section-title">Language Readiness<button type="button" class="gloss-trigger" popovertarget="gloss-readiness" popovertargetaction="show" aria-expanded="false" aria-label="What is Language Readiness?"><svg viewBox="0 0 24 24" width="13" height="13" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M12 11v5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><circle cx="12" cy="8" r="1" fill="currentColor"/></svg></button></h3>
+              <p class="page-subtitle">how close each language version is to shippable</p>
             </div>
 
             <table class="data-table">
@@ -1050,6 +1123,22 @@
     </div>
 
   </div><!-- /.page -->
+
+  <div id="gloss-master" class="gloss-pop" popover>
+    <p>The finished film file you are about to deliver. It carries technical metadata about the picture, every audio language, the subtitles and the packaging.</p>
+  </div>
+  <div id="gloss-spec" class="gloss-pop" popover>
+    <p>The delivery rules a platform publishes: how loud the mix must be, which colour standard, which subtitles are required. StreamOne and HallArc are two FICTIONAL destinations authored for this project, with deliberately different targets — which is why the same master can pass one and fail the other.</p>
+  </div>
+  <div id="gloss-audio" class="gloss-pop" popover>
+    <p>LUFS measures perceived loudness over a whole programme. A cinema mix usually sits near -24 LUFS; streaming platforms typically want around -27, so a theatrical mix delivered unchanged fails. The scale here is RELATIVE: 0 LU is this destination's target, so a bar left of centre is quieter than required and right of centre is louder. dBTP is the loudest instantaneous peak — exceed the ceiling and the audio can distort on playback.</p>
+  </div>
+  <div id="gloss-fix" class="gloss-pop" popover>
+    <p>A blocker means the platform will reject the file; a warning will not stop delivery. Jobs are ordered by how long the fix takes to arrange, not by pipeline order — the slowest thing to start is listed first.</p>
+  </div>
+  <div id="gloss-readiness" class="gloss-pop" popover>
+    <p>How close each language version is to shippable. For a simultaneous multi-language release, certification of the ORIGINAL language gates clearance of the dubs, so one pending certificate can hold up every other version.</p>
+  </div>
 
   <script src="/static/meter_collect.js"></script>
   <script src="/static/console.js"></script>
