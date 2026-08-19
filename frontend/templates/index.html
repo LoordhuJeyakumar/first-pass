@@ -58,61 +58,190 @@
     a:focus-visible { outline: 2px solid var(--warn); outline-offset: 2px; }
 
     /* =========================================================
-       LAYOUT
+       LAYOUT — full width, no 1240px column
        ========================================================= */
     .page {
-      max-width: 1240px;
-      margin: 0 auto;
-      padding: var(--space-lg) var(--space-md);
+      width: 100%;
+      margin: 0;
+      padding: 0 var(--space-lg) var(--space-lg);
     }
 
     /* =========================================================
-       PAGE HEADER
+       BURN-IN FRAME
        ========================================================= */
-    .page-header {
+    .burn-in {
+      position: relative;
+      min-height: 300px;
+      max-height: 340px;
+      height: 320px;
+      background: var(--bg-base);
+      transition: background 0.25s;
+      overflow: hidden;
+    }
+
+    .burn-in.verdict-pass   { background: var(--pass-bg); }
+    .burn-in.verdict-reject { background: var(--reject-bg); }
+    .burn-in.verdict-idle   { background: var(--neutral-bg); }
+
+    .frame-tick {
+      position: absolute;
+      width: 16px;
+      height: 16px;
+      pointer-events: none;
+    }
+    .frame-tick-tl { top: 10px; left: 10px; border-top: 1px solid var(--border); border-left: 1px solid var(--border); }
+    .frame-tick-tr { top: 10px; right: 10px; border-top: 1px solid var(--border); border-right: 1px solid var(--border); }
+    .frame-tick-bl { bottom: 10px; left: 10px; border-bottom: 1px solid var(--border); border-left: 1px solid var(--border); }
+    .frame-tick-br { bottom: 10px; right: 10px; border-bottom: 1px solid var(--border); border-right: 1px solid var(--border); }
+
+    .burn-tl,
+    .burn-tr,
+    .burn-bl,
+    .burn-br {
+      position: absolute;
       display: flex;
       flex-direction: column;
-      align-items: stretch;
-      gap: var(--space-xs);
-      padding-bottom: var(--space-sm);
-      border-bottom: 1px solid var(--border);
-      margin-bottom: var(--space-md);
+      gap: 2px;
+      z-index: 2;
+      max-width: 28%;
+    }
+    .burn-tl { top: var(--space-md); left: var(--space-lg); }
+    .burn-tr { top: var(--space-md); right: var(--space-lg); text-align: right; align-items: flex-end; }
+    .burn-bl { bottom: var(--space-md); left: var(--space-lg); }
+    .burn-br { bottom: var(--space-md); right: var(--space-lg); text-align: right; align-items: flex-end; }
+
+    .burn-label {
+      font-family: var(--mono);
+      font-size: 11px;
+      color: var(--text-dim);
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    .burn-val {
+      font-family: var(--mono);
+      font-size: 13px;
+      color: var(--text-muted);
+      font-variant-numeric: tabular-nums;
+      overflow-wrap: break-word;
+      word-break: normal;
+    }
+
+    #slate-langs {
+      overflow-wrap: break-word;
+      word-break: normal;
+    }
+
+    .burn-center {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: var(--space-lg) 180px;
+      text-align: center;
+      z-index: 1;
     }
 
     .page-title {
       font-family: var(--mono);
-      font-size: 14px;
+      font-size: 12px;
       font-weight: 700;
-      letter-spacing: 0.12em;
+      letter-spacing: 0.4em;
       text-transform: uppercase;
-      color: var(--text-muted);
+      color: var(--text-dim);
+      margin: 0 0 var(--space-sm) 0;
     }
 
     .page-subtitle {
-      font-size: 14px;
-      color: var(--text-dim);
-    }
-
-    .page-lede {
-      font-size: 14px;
-      line-height: 1.4;
+      font-family: var(--mono);
+      font-size: 11px;
       color: var(--text-muted);
-      max-width: 78ch;
+      margin: 0;
     }
 
     .page-links {
       display: flex;
       gap: var(--space-md);
-      font-size: 14px;
+      font-size: 11px;
       margin-top: 2px;
+      font-family: var(--mono);
     }
 
     .orient-link {
-      color: var(--text-primary);
+      color: var(--text-muted);
       text-decoration: none;
       cursor: pointer;
     }
-    .orient-link:hover { text-decoration: underline; }
+    .orient-link:hover { text-decoration: underline; color: var(--text-primary); }
+
+    .slate-badge {
+      font-family: var(--mono);
+      font-size: 11px;
+      color: var(--text-dim);
+      letter-spacing: 0.08em;
+    }
+
+    .tc-display {
+      font-size: 20px;
+      font-weight: 700;
+      color: var(--warn);
+      letter-spacing: 0.05em;
+    }
+
+    #verdict-text {
+      display: block;
+      font-family: var(--mono);
+      font-size: 60px;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      line-height: 1.05;
+      color: var(--text-muted);
+      margin-bottom: var(--space-xs);
+    }
+
+    .verdict-pass   #verdict-text { color: var(--pass); }
+    .verdict-reject #verdict-text { color: var(--reject); }
+    .verdict-idle   #verdict-text { color: var(--text-muted); }
+
+    #verdict-detail {
+      display: block;
+      font-size: 15px;
+      font-weight: 500;
+      color: var(--text-muted);
+    }
+
+    #verdict-master {
+      display: block;
+      font-family: var(--mono);
+      font-size: 14px;
+      color: var(--text-dim);
+      margin-top: var(--space-xs);
+    }
+
+    #verdict-phase {
+      display: block;
+      font-family: var(--mono);
+      font-size: 14px;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--warn);
+    }
+    #verdict-phase:empty { display: none; }
+
+    .provenance-strip {
+      font-family: var(--mono);
+      font-size: 11px;
+      line-height: 1.4;
+      color: var(--text-dim);
+      padding: var(--space-sm) var(--space-lg);
+      border-bottom: 1px solid var(--border);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
 
     /* =========================================================
        TRIGGER PANEL
@@ -123,7 +252,6 @@
       gap: var(--space-md);
       padding: var(--space-md) 0;
       border-bottom: 1px solid var(--border);
-      margin-bottom: var(--space-lg);
       flex-wrap: wrap;
     }
 
@@ -197,18 +325,6 @@
       cursor: not-allowed;
     }
 
-    #spinner {
-      display: none;
-      width: 14px;
-      height: 14px;
-      border: 2px solid var(--border-light);
-      border-top-color: var(--warn);
-      border-radius: 50%;
-      animation: spin 0.7s linear infinite;
-    }
-
-    @keyframes spin { to { transform: rotate(360deg); } }
-
     .run-status {
       font-size: 14px;
       color: var(--text-muted);
@@ -218,24 +334,96 @@
     .run-status-warn  { color: var(--warn); }
 
     /* =========================================================
-       SECTION HEADER (spec-document style)
+       DURATION STRIP
+       ========================================================= */
+    .duration-strip {
+      font-family: var(--mono);
+      font-size: 11px;
+      font-variant-numeric: tabular-nums;
+      letter-spacing: 0.06em;
+      color: var(--text-muted);
+      padding: var(--space-sm) 0;
+      border-bottom: 1px solid var(--border);
+    }
+    .duration-strip[hidden] { display: none; }
+
+    /* =========================================================
+       TWO LANES
+       ========================================================= */
+    .lanes {
+      display: grid;
+      grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
+      border-top: 2px solid var(--border-light);
+    }
+
+    .lane-engine {
+      border-right: 2px solid var(--border-light);
+      min-width: 0;
+    }
+
+    .lane-agent {
+      min-width: 0;
+    }
+
+    .lane-head {
+      background: var(--bg-row-alt);
+      padding: var(--space-sm) var(--space-lg);
+    }
+
+    .lane-title {
+      font-family: var(--mono);
+      font-size: 16px;
+      font-weight: 700;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      margin: 0;
+    }
+    .lane-engine .lane-title { color: var(--pass); }
+    .lane-agent .lane-title { color: var(--warn); }
+
+    .lane-sub {
+      font-size: 11px;
+      color: var(--text-muted);
+      margin: 0;
+      font-family: var(--mono);
+    }
+
+    .lane-body {
+      padding: 0 var(--space-lg) var(--space-lg);
+    }
+
+    .agent-pass-note {
+      font-family: var(--mono);
+      font-size: 14px;
+      color: var(--text-muted);
+      padding: var(--space-md) 0 var(--space-sm);
+    }
+    .agent-pass-note[hidden] { display: none; }
+
+    /* =========================================================
+       SECTION HEADER
        ========================================================= */
     .section {
-      margin-bottom: var(--space-xl);
+      margin-bottom: var(--space-lg);
     }
 
     .section-header {
       display: flex;
       align-items: baseline;
       gap: var(--space-md);
-      padding-bottom: var(--space-sm);
+      margin-top: var(--space-xl);
+      margin-bottom: var(--space-sm);
+      padding-bottom: 0;
       border-bottom: 2px solid var(--border);
-      margin-bottom: 0;
+    }
+
+    .lane-body .section:first-child .section-header {
+      margin-top: var(--space-md);
     }
 
     .section-title {
       font-family: var(--mono);
-      font-size: 14px;
+      font-size: 16px;
       font-weight: 700;
       letter-spacing: 0.14em;
       text-transform: uppercase;
@@ -250,63 +438,13 @@
     }
 
     /* =========================================================
-       VERDICT BANNER — the one element that gets scale
-       ========================================================= */
-    .verdict-banner {
-      padding: var(--space-lg) var(--space-xl);
-      border: 1px solid var(--border);
-      margin-bottom: var(--space-xl);
-      background: var(--neutral-bg);
-      transition: background 0.25s, border-color 0.25s;
-    }
-
-    .verdict-pass   { background: var(--pass-bg);   border-color: var(--pass); }
-    .verdict-reject { background: var(--reject-bg); border-color: var(--reject); }
-    .verdict-idle   { background: var(--neutral-bg); border-color: var(--border); }
-
-    #verdict-text {
-      display: block;
-      font-family: var(--mono);
-      font-size: clamp(2.5rem, 6vw, 4rem);
-      font-weight: 800;
-      letter-spacing: 0.04em;
-      line-height: 1.1;
-      color: var(--text-primary);
-      margin-bottom: var(--space-xs);
-    }
-
-    .verdict-pass   #verdict-text { color: var(--pass); }
-    .verdict-reject #verdict-text { color: var(--reject); }
-
-    #verdict-detail {
-      display: block;
-      font-size: 15px;
-      font-weight: 500;
-      color: var(--text-muted);
-    }
-
-    #verdict-master {
-      display: block;
-      font-family: var(--mono);
-      font-size: 14px;
-      color: var(--text-dim);
-      margin-top: var(--space-xs);
-    }
-
-    #verdict-phase {
-      display: block;
-      font-family: var(--mono);
-      font-size: 14px;
-      font-weight: 700;
-      letter-spacing: 0.08em;
-      text-transform: uppercase;
-      color: var(--warn);
-    }
-    #verdict-phase:empty { display: none; }
-
-    /* =========================================================
        TABLES — spec-sheet style, hairline borders
        ========================================================= */
+    .data-table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+
     .job-stage-row td {
       padding-top: var(--space-md);
       font-family: var(--mono);
@@ -428,7 +566,6 @@
     .ledger-detail {
       font-size: 14px;
       color: var(--text-muted);
-      max-width: 420px;
       overflow: hidden;
       text-overflow: ellipsis;
     }
@@ -481,94 +618,6 @@
       font-size: 14px;
       font-style: italic;
       border-bottom: 1px solid var(--border);
-    }
-
-    /* =========================================================
-       QC SLATE
-       ========================================================= */
-    .qc-slate {
-      background: var(--bg-panel);
-      border: 1px solid var(--border-light);
-      margin-bottom: var(--space-lg);
-      border-radius: 2px;
-    }
-
-    .slate-header {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      padding: var(--space-xs) var(--space-md);
-      background: var(--bg-row-alt);
-      border-bottom: 1px solid var(--border);
-    }
-
-    .slate-title {
-      font-family: var(--mono);
-      font-size: 14px;
-      font-weight: 700;
-      letter-spacing: 0.12em;
-      color: var(--text-muted);
-      text-transform: uppercase;
-      margin: 0;
-    }
-
-    .slate-badge {
-      font-family: var(--mono);
-      font-size: 14px;
-      color: var(--text-dim);
-      letter-spacing: 0.08em;
-    }
-
-    .slate-grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-      gap: 1px;
-      background: var(--border);
-      margin: 0;
-    }
-
-    .slate-cell {
-      background: var(--bg-panel);
-      padding: var(--space-sm) var(--space-md);
-      display: flex;
-      flex-direction: column;
-      gap: 2px;
-    }
-
-    .slate-cell dt,
-    .slate-cell dd {
-      margin: 0;
-    }
-
-    .slate-cell-tc {
-      background: #14181f;
-    }
-
-    .slate-label {
-      font-family: var(--mono);
-      font-size: 14px;
-      color: var(--text-dim);
-      letter-spacing: 0.08em;
-    }
-
-    .slate-val {
-      font-size: 15px;
-      font-weight: 600;
-      color: var(--text-primary);
-      overflow-wrap: break-word;
-      word-break: normal;
-    }
-
-    #slate-langs {
-      overflow-wrap: break-word;
-      word-break: normal;
-    }
-
-    .tc-display {
-      font-size: 20px;
-      font-weight: 700;
-      color: var(--warn);
-      letter-spacing: 0.05em;
     }
 
     /* =========================================================
@@ -818,57 +867,66 @@
       border: 0;
     }
 
+    @media (max-width: 1100px) {
+      .lanes { grid-template-columns: 1fr; }
+      .lane-engine { border-right: none; border-bottom: 2px solid var(--border-light); }
+      .burn-center { padding: var(--space-lg) 120px; }
+    }
+
     @media (prefers-reduced-motion: reduce) {
-      .loudness-marker { transition: none; }
+      .loudness-marker { transition: none; transition-delay: 0s; }
       .ledger-appear { animation: none; }
       .verdict-stamp-in { animation: none; }
+      .burn-in { transition: none; }
+      #run-btn { transition: none; }
     }
   </style>
 </head>
 
 <body>
-  <div class="page">
+  <header id="verdict-banner" class="burn-in verdict-idle">
+    <span class="frame-tick frame-tick-tl" aria-hidden="true"></span>
+    <span class="frame-tick frame-tick-tr" aria-hidden="true"></span>
+    <span class="frame-tick frame-tick-bl" aria-hidden="true"></span>
+    <span class="frame-tick frame-tick-br" aria-hidden="true"></span>
 
-    <header class="page-header">
-      <p class="page-lede">First Pass checks a master against a destination spec before you submit. Values are evaluated from the master's technical metadata; ffmpeg's ebur128 filter measures those values from real media; the demo masters ship as authored metadata.</p>
-      <p class="page-lede">StreamOne and HallArc are two delivery destinations with different targets, so the same master can pass one and fail the other.</p>
+    <div class="burn-tl">
+      <span class="burn-label">MASTER</span>
+      <span id="slate-master" class="burn-val mono">—</span>
+      <span class="burn-label">RUN DATE</span>
+      <span id="slate-date" class="burn-val mono">—</span>
+    </div>
+    <div class="burn-tr">
+      <span class="burn-label">ELAPSED TC · 24 FPS</span>
+      <span id="slate-tc" class="mono tabular tc-display">00:00:00:00</span>
+    </div>
+    <div class="burn-bl">
+      <span class="burn-label">DESTINATION</span>
+      <span id="slate-spec" class="burn-val mono">—</span>
+      <span id="slate-langs" class="burn-val mono">—</span>
+    </div>
+    <div class="burn-br">
+      <span class="slate-badge">EBU TECH 3341</span>
       <p class="page-links">
-        <a id="repo-link" class="orient-link" href="https://github.com/LoordhuJeyakumar/first-pass" target="_blank" rel="noopener noreferrer">GitHub</a>
+        <a id="repo-link" class="orient-link" href="https://github.com/LoordhuJeyakumar/first-pass" target="_blank" rel="noopener noreferrer">Source</a>
         {% if grafana_dashboard_url %}
         <a id="grafana-dashboard-link" class="orient-link" href="#" data-href="{{ grafana_dashboard_url }}" target="_blank" rel="noopener noreferrer">Dashboard</a>
         {% endif %}
       </p>
-    </header>
-
-    <!-- ── DELIVERY QC SLATE ────────────────────────────────────── -->
-    <div class="qc-slate">
-      <div class="slate-header">
-        <h1 class="slate-title">FIRST PASS</h1>
-        <span class="slate-badge">EBU TECH 3341</span>
-      </div>
-      <dl class="slate-grid">
-        <div class="slate-cell">
-          <dt class="slate-label">MASTER ID</dt>
-          <dd id="slate-master" class="slate-val mono">—</dd>
-        </div>
-        <div class="slate-cell">
-          <dt class="slate-label">SPEC ID</dt>
-          <dd id="slate-spec" class="slate-val mono">—</dd>
-        </div>
-        <div class="slate-cell">
-          <dt class="slate-label">LANGUAGES</dt>
-          <dd id="slate-langs" class="slate-val mono">—</dd>
-        </div>
-        <div class="slate-cell">
-          <dt class="slate-label">RUN DATE (UTC)</dt>
-          <dd id="slate-date" class="slate-val mono">—</dd>
-        </div>
-        <div class="slate-cell slate-cell-tc">
-          <dt class="slate-label">ELAPSED TC (24 FPS)</dt>
-          <dd id="slate-tc" class="slate-val mono tabular tc-display">00:00:00:00</dd>
-        </div>
-      </dl>
     </div>
+
+    <div class="burn-center">
+      <h1 class="page-title">FIRST PASS</h1>
+      <span id="verdict-text">IDLE</span>
+      <span id="verdict-phase"></span>
+      <span id="verdict-detail">No run has been triggered yet.</span>
+      <span id="verdict-master" class="sr-only"></span>
+    </div>
+  </header>
+
+  <p class="provenance-strip">First Pass checks a master against a destination spec before you submit. Values are evaluated from the master's technical metadata; ffmpeg's ebur128 filter measures those values from real media; the demo masters ship as authored metadata.</p>
+
+  <div class="page">
 
     <!-- ── TRIGGER PANEL ────────────────────────────────────────── -->
     <div class="trigger-panel">
@@ -895,96 +953,101 @@
       </span>
     </div>
 
+    <div id="duration-strip" class="duration-strip" hidden></div>
+
     <div id="verdict-live" class="sr-only" role="status" aria-live="polite" aria-atomic="true"></div>
 
-    <!-- ── VERDICT BANNER ───────────────────────────────────────── -->
-    <section class="section">
-      <div class="section-header">
-        <h2 class="section-title">Verdict</h2>
-      </div>
+    <div class="lanes">
+      <section class="lane lane-engine">
+        <div class="lane-head">
+          <h2 class="lane-title">DETERMINISTIC ENGINE FOUND</h2>
+          <p class="lane-sub">pure Python · stdlib only · the model computes nothing here</p>
+        </div>
+        <div class="lane-body">
 
-      <div id="verdict-banner" class="verdict-banner verdict-idle">
-        <span id="verdict-text">IDLE</span>
-        <span id="verdict-phase"></span>
-        <span id="verdict-detail">No run has been triggered yet.</span>
-        <span id="verdict-master"></span>
-      </div>
-    </section>
+          <!-- ── AUDIO ────────────────────────────────────────────────── -->
+          <section class="section">
+            <div class="section-header">
+              <h3 class="section-title" id="meter-section-title">Audio</h3>
+              <p id="meter-spec-subline" class="page-subtitle"></p>
+            </div>
 
-    <!-- ── AUDIO ────────────────────────────────────────────────── -->
-    <section class="section">
-      <div class="section-header">
-        <h2 class="section-title" id="meter-section-title">Audio</h2>
-        <p id="meter-spec-subline" class="page-subtitle"></p>
-      </div>
+            <div id="meter-container">
+              <div id="meter-empty" class="empty-state">No loudness or true-peak readings yet. Click RUN to check this master against the spec.</div>
+              <div id="meter-grid" class="meter-grid"></div>
+            </div>
+          </section>
 
-      <div id="meter-container">
-        <div id="meter-empty" class="empty-state">No loudness or true-peak readings yet. Click RUN to check this master against the spec.</div>
-        <div id="meter-grid" class="meter-grid"></div>
-      </div>
-    </section>
+          <!-- ── FIX PLAN ─────────────────────────────────────────────── -->
+          <section class="section">
+            <div class="section-header">
+              <h3 class="section-title">Fix Plan</h3>
+              <p class="page-subtitle">ranked jobs · every non-conformance</p>
+            </div>
 
-    <!-- ── FIX PLAN ─────────────────────────────────────────────── -->
-    <section class="section">
-      <div class="section-header">
-        <h2 class="section-title">Fix Plan</h2>
-      </div>
+            <table class="data-table" id="fix-list">
+              <thead>
+                <tr>
+                  <th scope="col">CLAUSE</th>
+                  <th scope="col">SEVERITY</th>
+                  <th scope="col">MEASURED</th>
+                  <th scope="col">EXPECTED</th>
+                  <th scope="col">LANGUAGE</th>
+                  <th scope="col">FINDING</th>
+                </tr>
+              </thead>
+              <tbody id="fix-body"></tbody>
+            </table>
+            <div id="fix-empty" class="empty-state">No findings listed. Click RUN to check this master against the spec.</div>
+          </section>
 
-      <table class="data-table" id="fix-list">
-        <thead>
-          <tr>
-            <th scope="col">CLAUSE</th>
-            <th scope="col">SEVERITY</th>
-            <th scope="col">MEASURED</th>
-            <th scope="col">EXPECTED</th>
-            <th scope="col">LANGUAGE</th>
-            <th scope="col">FINDING</th>
-          </tr>
-        </thead>
-        <tbody id="fix-body"></tbody>
-      </table>
-      <div id="fix-empty" class="empty-state">No findings listed. Click RUN to check this master against the spec.</div>
-    </section>
+          <!-- ── LANGUAGE READINESS ───────────────────────────────────── -->
+          <section class="section">
+            <div class="section-header">
+              <h3 class="section-title">Language Readiness</h3>
+              <p class="page-subtitle">per-language score · regional certification gating</p>
+            </div>
 
-    <!-- ── LANGUAGE READINESS ───────────────────────────────────── -->
-    <section class="section">
-      <div class="section-header">
-        <h2 class="section-title">Language Readiness</h2>
-      </div>
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th scope="col">LANGUAGE</th>
+                  <th scope="col">READINESS</th>
+                  <th scope="col" style="width:240px">SCORE</th>
+                </tr>
+              </thead>
+              <tbody id="readiness-body">
+                <tr><td colspan="3" class="empty-state">No language scores yet. Click RUN to check.</td></tr>
+              </tbody>
+            </table>
+          </section>
 
-      <table class="data-table">
-        <thead>
-          <tr>
-            <th scope="col">LANGUAGE</th>
-            <th scope="col">READINESS</th>
-            <th scope="col" style="width:240px">SCORE</th>
-          </tr>
-        </thead>
-        <tbody id="readiness-body">
-          <tr><td colspan="3" class="empty-state">No language scores yet. Click RUN to check.</td></tr>
-        </tbody>
-      </table>
-    </section>
+        </div>
+      </section>
 
-    <!-- ── AGENT ACTIONS ────────────────────────────────────────── -->
-    <section class="section">
-      <div class="section-header">
-        <h2 class="section-title">Agent Actions</h2>
-      </div>
+      <section class="lane lane-agent">
+        <div class="lane-head">
+          <h2 class="lane-title">AGENT ACTED</h2>
+          <p class="lane-sub">one bounded agent · four allowlisted MCP tools</p>
+        </div>
+        <div class="lane-body">
+          <p id="agent-pass-note" class="agent-pass-note" hidden>On a PASS the agent writes nothing.</p>
 
-      <table class="data-table">
-        <thead>
-          <tr>
-            <th scope="col">TIME (UTC)</th>
-            <th scope="col">OPERATION</th>
-            <th scope="col">DETAIL</th>
-            <th scope="col">LINK</th>
-          </tr>
-        </thead>
-        <tbody id="ledger-body"></tbody>
-      </table>
-      <div id="ledger-empty" class="empty-state">No actions yet. They appear here during a run.</div>
-    </section>
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th scope="col">TIME (UTC)</th>
+                <th scope="col">OPERATION</th>
+                <th scope="col">DETAIL</th>
+                <th scope="col">LINK</th>
+              </tr>
+            </thead>
+            <tbody id="ledger-body"></tbody>
+          </table>
+          <div id="ledger-empty" class="empty-state">No actions yet. They appear here during a run.</div>
+        </div>
+      </section>
+    </div>
 
   </div><!-- /.page -->
 

@@ -33,12 +33,20 @@ let elRunBtn, elMasterSelect, elSpecSelect, elStatus;
 let elReadinessBody;
 let elSlateMaster, elSlateSpec, elSlateLangs, elSlateDate, elSlateTc;
 let elMeterGrid, elMeterEmpty, elMeterSectionTitle, elMeterSpecSubline;
+let elDurationStrip, elAgentPassNote;
 
 const FIX_EMPTY_IDLE =
   "No findings listed. Click RUN to check this master against the spec.";
 const READINESS_IDLE = "No language scores yet. Click RUN to check.";
 const READINESS_POST_RUN =
   "Per-language readiness applies only to destinations with regional certification gating.";
+
+const DURATION_OPS = {
+  "Evaluate spec": "EVALUATE",
+  "Publish telemetry": "TELEMETRY",
+  "Publish dashboard": "DASHBOARD",
+  "Start agent": "AGENT",
+};
 
 // ---------------------------------------------------------------------------
 // Entry point
@@ -72,6 +80,8 @@ document.addEventListener("DOMContentLoaded", () => {
   elMeterEmpty    = document.getElementById("meter-empty");
   elMeterSectionTitle = document.getElementById("meter-section-title");
   elMeterSpecSubline = document.getElementById("meter-spec-subline");
+  elDurationStrip = document.getElementById("duration-strip");
+  elAgentPassNote = document.getElementById("agent-pass-note");
 
   if (elRunBtn) elRunBtn.addEventListener("click", handleRunClick);
   wireDashboardLink();
@@ -107,16 +117,24 @@ function formatTimecode(elapsedMs) {
   return `${hh}:${mm}:${ss}:${ff}`;
 }
 
+function paintTC() {
+  if (!tcStartTime || !elSlateTc) return;
+  elSlateTc.textContent = formatTimecode(Date.now() - tcStartTime);
+}
+
 function startTC() {
-  stopTC();
+  if (tcAnimationFrame) {
+    cancelAnimationFrame(tcAnimationFrame);
+    tcAnimationFrame = null;
+  }
   tcStartTime = Date.now();
+  if (elSlateTc) elSlateTc.textContent = formatTimecode(0);
   if (prefersReducedMotion()) {
-    if (elSlateTc) elSlateTc.textContent = "00:00:00:00";
     return;
   }
   function tick() {
     if (!tcStartTime) return;
-    if (elSlateTc) elSlateTc.textContent = formatTimecode(Date.now() - tcStartTime);
+    paintTC();
     tcAnimationFrame = requestAnimationFrame(tick);
   }
   tick();
@@ -127,6 +145,10 @@ function stopTC() {
     cancelAnimationFrame(tcAnimationFrame);
     tcAnimationFrame = null;
   }
+  if (tcStartTime && elSlateTc) {
+    elSlateTc.textContent = formatTimecode(Date.now() - tcStartTime);
+  }
+  tcStartTime = null;
 }
 
 // ---------------------------------------------------------------------------
@@ -204,12 +226,14 @@ async function pollRun() {
   const state = await response.json();
   appendNewLedgerRows(state.ledger || []);
   updateSlate(state);
+  if (tcStartTime && prefersReducedMotion()) paintTC();
 
   if (state.status === "done") {
     stopPolling();
     stopTC();
     clearPhase();
     renderVerdict(state);
+    renderDurationStrip(state.ledger || []);
     safeRender(() => renderAudioMeters(state.evaluations || []), "audioMeters");
     safeRender(
       () => renderFixList(state.ranked_fix_plan || { jobs: [] }, state.findings || [], state),
@@ -224,6 +248,7 @@ async function pollRun() {
     clearPhase();
     setStatus(`Run failed: ${state.error || "unknown error"}`, "error");
     renderVerdict({ verdict: "FAILED", blocker_count: 0, master_id: state.master_id });
+    renderDurationStrip(state.ledger || []);
     setRunning(false);
   } else {
     updatePhaseFromLedger(state.ledger || []);
@@ -260,6 +285,7 @@ async function applyRemoteRun(runId) {
   updateSlate(state);
   if (state.status === "done" || state.evaluations) {
     renderVerdict(state);
+    renderDurationStrip(state.ledger || []);
     safeRender(() => renderAudioMeters(state.evaluations || []), "audioMeters");
     safeRender(
       () => renderFixList(state.ranked_fix_plan || { jobs: [] }, state.findings || [], state),
@@ -292,6 +318,46 @@ function updateSlate(state) {
   }
 }
 
+function parseLedgerSeconds(ts) {
+  const m = String(ts || "").match(/^(\d{2}):(\d{2}):(\d{2})/);
+  if (!m) return null;
+  return (+m[1]) * 3600 + (+m[2]) * 60 + (+m[3]);
+}
+
+function renderDurationStrip(ledger) {
+  if (!elDurationStrip) return;
+  const progress = [];
+  const seen = {};
+  (ledger || []).forEach((entry) => {
+    const label = DURATION_OPS[entry.operation];
+    if (!label || seen[label]) return;
+    const sec = parseLedgerSeconds(entry.timestamp);
+    if (sec === null) return;
+    seen[label] = true;
+    progress.push({ label, sec });
+  });
+  if (!progress.length) {
+    elDurationStrip.hidden = true;
+    elDurationStrip.textContent = "";
+    return;
+  }
+  let endSec = progress[progress.length - 1].sec;
+  const last = ledger[ledger.length - 1];
+  const lastSec = last ? parseLedgerSeconds(last.timestamp) : null;
+  if (lastSec !== null) endSec = lastSec;
+
+  const parts = [];
+  for (let i = 0; i < progress.length; i++) {
+    const start = progress[i].sec;
+    const stop = i + 1 < progress.length ? progress[i + 1].sec : endSec;
+    let delta = stop - start;
+    if (delta < 0) delta += 86400;
+    parts.push(`${progress[i].label} · ${delta.toFixed(1)} s`);
+  }
+  elDurationStrip.textContent = parts.join("   ");
+  elDurationStrip.hidden = false;
+}
+
 // ---------------------------------------------------------------------------
 // Verdict banner — single impact stamp transition
 // ---------------------------------------------------------------------------
@@ -304,7 +370,7 @@ function renderVerdict(state) {
   elVerdictText.textContent = verdict === "PASS"
     ? "PASS"
     : verdict === "REJECT"
-    ? `REJECT — ${blockers} ${blockers === 1 ? "blocker" : "blockers"}`
+    ? "REJECT"
     : verdict;
 
   elBlockerCount.textContent =
@@ -314,6 +380,8 @@ function renderVerdict(state) {
 
   elMasterId.textContent = masterId ? `Master: ${masterId}` : "";
 
+  if (elAgentPassNote) elAgentPassNote.hidden = verdict !== "PASS";
+
   const live =
     verdict === "PASS" ? "Verdict PASS" :
     verdict === "REJECT" ? `Verdict REJECT, ${blockers} blocker${blockers !== 1 ? "s" : ""}` :
@@ -321,10 +389,13 @@ function renderVerdict(state) {
     `Verdict ${verdict}`;
   announceVerdict(live);
 
-  let cls = "verdict-banner verdict-" +
+  elVerdict.className = "burn-in verdict-" +
     (verdict === "PASS" ? "pass" : verdict === "REJECT" ? "reject" : "idle");
-  if (!prefersReducedMotion()) cls += " verdict-stamp-in";
-  elVerdict.className = cls;
+  elVerdictText.classList.remove("verdict-stamp-in");
+  if (!prefersReducedMotion() && (verdict === "PASS" || verdict === "REJECT")) {
+    void elVerdictText.offsetWidth;
+    elVerdictText.classList.add("verdict-stamp-in");
+  }
   clearPhase();
 }
 
@@ -399,7 +470,12 @@ function meterCue(pass) {
     : `<span class="meter-cue meter-cue-fail">FAIL</span>`;
 }
 
-function luTrackInner(t) {
+function markerDelayMs(langIndex) {
+  if (prefersReducedMotion()) return 0;
+  return Math.min(langIndex * 40, 200);
+}
+
+function luTrackInner(t, langIndex) {
   const hasDev = t.deviationLu !== undefined && t.deviationLu !== null;
   const hasTol = t.tolLu !== undefined && t.tolLu !== null;
   const lu = hasDev ? mapToPct(t.deviationLu, LU_MIN, LU_MAX) : { pct: 50, off: null };
@@ -407,11 +483,12 @@ function luTrackInner(t) {
   const tolRight = hasTol ? mapToPct(t.tolLu, LU_MIN, LU_MAX).pct : 0;
   const zero = mapToPct(0, LU_MIN, LU_MAX).pct;
   const cue = t.loudPass ? "PASS" : "FAIL";
+  const delay = markerDelayMs(langIndex);
   const tolBand = hasTol
     ? `<div class="tolerance-band" style="left:${tolLeft.toFixed(2)}%; width:${(tolRight - tolLeft).toFixed(2)}%;"></div>`
     : "";
   const marker = hasDev
-    ? `<div class="loudness-marker ${t.loudPass ? "loudness-marker-pass" : "loudness-marker-fail"}" style="left:${lu.pct.toFixed(2)}%;"></div>${offScaleHtml(lu.off)}`
+    ? `<div class="loudness-marker ${t.loudPass ? "loudness-marker-pass" : "loudness-marker-fail"}" data-target-left="${lu.pct.toFixed(2)}%" style="left:${zero.toFixed(2)}%; transition-delay:${delay}ms;"></div>${offScaleHtml(lu.off)}`
     : "";
   return `
     <div class="scale-track-container" role="img" aria-label="${esc(t.lang)} loudness ${esc(fmtFixed(t.loudnessLufs))} LUFS (${esc(fmtDev(t.deviationLu))}) ${cue}">
@@ -421,23 +498,42 @@ function luTrackInner(t) {
     </div>`;
 }
 
-function tpTrackInner(t) {
+function tpTrackInner(t, langIndex) {
   const hasTp = t.tpDbtp !== undefined && t.tpDbtp !== null;
   const hasCeil = t.targetMaxDbtp !== undefined && t.targetMaxDbtp !== null;
   const tp = hasTp ? mapToPct(t.tpDbtp, TP_MIN, TP_MAX) : { pct: 50, off: null };
   const ceil = hasCeil ? mapToPct(t.targetMaxDbtp, TP_MIN, TP_MAX) : { pct: 100, off: null };
   const cue = t.tpPass ? "PASS" : "FAIL";
+  const delay = markerDelayMs(langIndex);
   const ceilLine = hasCeil
     ? `<div class="ceiling-line" style="left:${ceil.pct.toFixed(2)}%;"></div>`
     : "";
   const marker = hasTp
-    ? `<div class="loudness-marker ${t.tpPass ? "loudness-marker-pass" : "loudness-marker-fail"}" style="left:${tp.pct.toFixed(2)}%;"></div>${offScaleHtml(tp.off)}`
+    ? `<div class="loudness-marker ${t.tpPass ? "loudness-marker-pass" : "loudness-marker-fail"}" data-target-left="${tp.pct.toFixed(2)}%" style="left:0%; transition-delay:${delay}ms;"></div>${offScaleHtml(tp.off)}`
     : "";
   return `
     <div class="true-peak-track" role="img" aria-label="${esc(t.lang)} true peak ${esc(fmtFixed(t.tpDbtp))} dBTP ${cue}">
       ${ceilLine}
       ${marker}
     </div>`;
+}
+
+function settleMeterMarkers() {
+  if (!elMeterGrid) return;
+  const markers = elMeterGrid.querySelectorAll(".loudness-marker[data-target-left]");
+  const apply = () => {
+    markers.forEach((m) => {
+      if (prefersReducedMotion()) m.style.transitionDelay = "0s";
+      m.style.left = m.getAttribute("data-target-left");
+    });
+  };
+  if (prefersReducedMotion()) {
+    apply();
+    return;
+  }
+  requestAnimationFrame(() => {
+    requestAnimationFrame(apply);
+  });
 }
 
 function fmtDev(dev) {
@@ -464,16 +560,16 @@ function renderAudioMeters(evaluations) {
 
   const luTicks = ticksHtml([-4, -2, 0, 2, 4], LU_MIN, LU_MAX, "LU");
   const tpTicks = ticksHtml([-6, -4, -2, 0], TP_MIN, TP_MAX, "dBTP");
-  const luRows = tracks.map((t) => `
+  const luRows = tracks.map((t, i) => `
     <div class="shared-lang-row">
       <span class="lang">${esc(t.lang)}</span>
-      ${luTrackInner(t)}
+      ${luTrackInner(t, i)}
       <span class="readout-val ${t.loudPass ? "readout-pass" : "readout-fail"} tabular">${meterCue(t.loudPass)} ${esc(fmtFixed(t.loudnessLufs))} LUFS (${esc(fmtDev(t.deviationLu))})</span>
     </div>`).join("");
-  const tpRows = tracks.map((t) => `
+  const tpRows = tracks.map((t, i) => `
     <div class="shared-lang-row">
       <span class="lang">${esc(t.lang)}</span>
-      ${tpTrackInner(t)}
+      ${tpTrackInner(t, i)}
       <span class="readout-val ${t.tpPass ? "readout-pass" : "readout-fail"} tabular">${meterCue(t.tpPass)} ${esc(fmtFixed(t.tpDbtp))} dBTP</span>
     </div>`).join("");
   elMeterGrid.innerHTML = `
@@ -483,6 +579,7 @@ function renderAudioMeters(evaluations) {
     <div class="meter-axis-caption meter-axis-caption-tp">True Peak (${TP_MIN.toFixed(0)} … ${TP_MAX.toFixed(0)} dBTP)</div>
     <div class="scale-ticks">${tpTicks}</div>
     ${tpRows}`;
+  settleMeterMarkers();
 }
 
 // ---------------------------------------------------------------------------
@@ -649,9 +746,10 @@ function wireDashboardLink() {
 
 function resetUI() {
   elVerdictText.textContent = "EVALUATING…";
+  elVerdictText.classList.remove("verdict-stamp-in");
   elBlockerCount.textContent = "";
   elMasterId.textContent = "";
-  elVerdict.className = "verdict-banner verdict-idle";
+  elVerdict.className = "burn-in verdict-idle";
   clearPhase();
   announceVerdict("Verdict EVALUATING");
   elFixBody.innerHTML = "";
@@ -666,6 +764,12 @@ function resetUI() {
   if (elMeterGrid) elMeterGrid.innerHTML = "";
   if (elMeterEmpty) elMeterEmpty.style.display = "";
   setMeterSpecSubline("");
+  if (elDurationStrip) {
+    elDurationStrip.hidden = true;
+    elDurationStrip.textContent = "";
+  }
+  if (elAgentPassNote) elAgentPassNote.hidden = true;
+  if (elSlateTc) elSlateTc.textContent = "00:00:00:00";
 }
 
 function setRunning(running) {
