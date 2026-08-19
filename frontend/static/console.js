@@ -89,6 +89,7 @@ document.addEventListener("DOMContentLoaded", () => {
   if (elRunBtn) elRunBtn.addEventListener("click", handleRunClick);
   wireDashboardLink();
   wireGlossary();
+  wireHowItWorks();
 
   const fixtureRun = new URLSearchParams(window.location.search).get("run");
   if (fixtureRun) applyRemoteRun(fixtureRun);
@@ -780,6 +781,174 @@ function wireGlossary() {
   });
   window.addEventListener("scroll", hideOpenGlossaries, { passive: true });
   window.addEventListener("resize", hideOpenGlossaries);
+}
+
+// ---------------------------------------------------------------------------
+// How it works — toggle + architecture diagram wires
+// ---------------------------------------------------------------------------
+
+const ARCH_CANVAS_WIDTH = 1856;
+
+const ARCH_EDGES = [
+  { from: ["arch-inputs", "right", 0.5],  to: ["arch-engine", "left", 0.5],  label: "master + spec", dashed: false, route: "h" },
+  { from: ["arch-engine", "right", 0.25], to: ["arch-grafana", "left", 0.18], label: "POST /api/dashboards/db · Python REST, not MCP", dashed: false, route: "hvh", channelX: 1300 },
+  { from: ["arch-engine", "right", 0.55], to: ["arch-grafana", "left", 0.45], label: "Prometheus remote-write + Loki push", dashed: false, route: "hvh", channelX: 1340 },
+  { from: ["arch-engine", "right", 0.85], to: ["arch-grafana", "left", 0.72], label: "GET Ruler API · read-only pre-query", dashed: true, route: "hvh", channelX: 1380 },
+  { from: ["arch-engine", "bottom", 0.5], to: ["arch-agent", "top", 0.5],    label: "structured findings", dashed: false, route: "v" },
+  { from: ["arch-agent", "right", 0.5],   to: ["arch-grafana", "left", 0.90], label: "MCP streamable-http", dashed: false, route: "hv" },
+  { from: ["arch-engine", "left", 0.7],   to: ["arch-console", "top", 0.22], label: "verdict + meters", dashed: false, route: "console-left" },
+  { from: ["arch-agent", "bottom", 0.5],  to: ["arch-console", "top", 0.50], label: "action ledger", dashed: false, route: "v" },
+];
+
+function archPort(canvas, id, side, t) {
+  const el = canvas.querySelector("#" + id);
+  if (!el) return { x: 0, y: 0 };
+  const x0 = el.offsetLeft;
+  const y0 = el.offsetTop;
+  const w = el.offsetWidth;
+  const h = el.offsetHeight;
+  const k = t === undefined ? 0.5 : t;
+  if (side === "right")  return { x: x0 + w,     y: y0 + h * k };
+  if (side === "left")   return { x: x0,         y: y0 + h * k };
+  if (side === "bottom") return { x: x0 + w * k, y: y0 + h };
+  if (side === "top")    return { x: x0 + w * k, y: y0 };
+  return { x: 0, y: 0 };
+}
+
+function archPolyline(pts) {
+  return pts.map((p, i) => (i === 0 ? "M " + p.x + " " + p.y : "L " + p.x + " " + p.y)).join(" ");
+}
+
+function archPointsFor(e, a, b) {
+  if (e.route === "h") return [a, { x: b.x, y: a.y }, b];
+  if (e.route === "v") return [a, b];
+  if (e.route === "hv") {
+    const midX = (a.x + b.x) / 2;
+    return [a, { x: midX, y: a.y }, { x: midX, y: b.y }, b];
+  }
+  if (e.route === "hvh") {
+    const x = e.channelX;
+    return [a, { x: x, y: a.y }, { x: x, y: b.y }, b];
+  }
+  if (e.route === "console-left") {
+    const gutter = 400;
+    return [a, { x: gutter, y: a.y }, { x: gutter, y: b.y }, b];
+  }
+  return [a, b];
+}
+
+function archLabelAnchor(pts) {
+  let best = 0;
+  let bestLen = -1;
+  for (let i = 0; i < pts.length - 1; i++) {
+    const dx = pts[i + 1].x - pts[i].x;
+    const dy = pts[i + 1].y - pts[i].y;
+    const len = Math.abs(dx) + Math.abs(dy);
+    if (len > bestLen) { bestLen = len; best = i; }
+  }
+  const p0 = pts[best];
+  const p1 = pts[best + 1];
+  return {
+    x: p0.x * 0.35 + p1.x * 0.65,
+    y: p0.y * 0.35 + p1.y * 0.65,
+  };
+}
+
+function alignArchDiagram() {
+  const canvas = document.getElementById("arch-canvas");
+  if (!canvas) return;
+  const engine = canvas.querySelector("#arch-engine");
+  const agent = canvas.querySelector("#arch-agent");
+  const inputs = canvas.querySelector("#arch-inputs");
+  const grafana = canvas.querySelector("#arch-grafana");
+  if (!engine || !agent || !inputs || !grafana) return;
+
+  inputs.style.top = (engine.offsetTop + engine.offsetHeight / 2 - inputs.offsetHeight / 2) + "px";
+  const mid = (engine.offsetTop + agent.offsetTop + agent.offsetHeight) / 2;
+  grafana.style.top = (mid - grafana.offsetHeight / 2) + "px";
+
+  const scroll = canvas.parentElement;
+  if (!scroll) return;
+  const s = Math.min(1, scroll.clientWidth / ARCH_CANVAS_WIDTH);
+  canvas.style.transform = s < 1 ? "scale(" + s + ")" : "";
+  scroll.style.height = (canvas.offsetHeight * s) + "px";
+}
+
+function drawArchWires() {
+  const canvas = document.getElementById("arch-canvas");
+  const svg = document.getElementById("arch-wires");
+  if (!canvas || !svg) return;
+
+  svg.innerHTML =
+    "<defs>" +
+    '<marker id="arch-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">' +
+    '<path d="M 0 0 L 10 5 L 0 10 z" fill="#8d9095"/>' +
+    "</marker>" +
+    '<marker id="arch-arrow-warn" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">' +
+    '<path d="M 0 0 L 10 5 L 0 10 z" fill="#f89b29"/>' +
+    "</marker>" +
+    "</defs>";
+
+  canvas.querySelectorAll(".arch-edge").forEach((n) => n.remove());
+
+  ARCH_EDGES.forEach((e) => {
+    const a = archPort(canvas, e.from[0], e.from[1], e.from[2]);
+    const b = archPort(canvas, e.to[0], e.to[1], e.to[2]);
+    const pts = archPointsFor(e, a, b);
+    const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+    path.setAttribute("d", archPolyline(pts));
+    path.setAttribute("fill", "none");
+    path.setAttribute("stroke", e.dashed ? "#f89b29" : "#8d9095");
+    path.setAttribute("stroke-width", "1.75");
+    if (e.dashed) path.setAttribute("stroke-dasharray", "7 5");
+    path.setAttribute("marker-end", e.dashed ? "url(#arch-arrow-warn)" : "url(#arch-arrow)");
+    svg.appendChild(path);
+
+    const mid = e.route === "hvh"
+      ? { x: e.channelX, y: (a.y + b.y) / 2 }
+      : archLabelAnchor(pts);
+    const lab = document.createElement("div");
+    lab.className = "arch-edge" + (e.dashed ? " dashed" : "");
+    lab.textContent = e.label;
+    lab.style.left = mid.x + "px";
+    lab.style.top = mid.y + "px";
+    if (e.route === "hvh") lab.style.transform = "translate(-100%, -50%)";
+    canvas.appendChild(lab);
+  });
+}
+
+function refreshArchDiagram() {
+  alignArchDiagram();
+  drawArchWires();
+}
+
+function wireHowItWorks() {
+  const toggle = document.getElementById("howitworks-toggle");
+  const panel = document.getElementById("howitworks");
+  const lanes = document.querySelector(".lanes");
+  if (!toggle || !panel || !lanes) return;
+
+  function setOpen(open) {
+    panel.hidden = !open;
+    lanes.hidden = open;
+    toggle.setAttribute("aria-expanded", open ? "true" : "false");
+    if (open) {
+      hideOpenGlossaries();
+      requestAnimationFrame(() => {
+        refreshArchDiagram();
+      });
+    }
+  }
+
+  toggle.addEventListener("click", () => {
+    setOpen(panel.hidden);
+  });
+
+  window.addEventListener("resize", () => {
+    if (!panel.hidden) {
+      requestAnimationFrame(refreshArchDiagram);
+    }
+  });
 }
 
 // ---------------------------------------------------------------------------
