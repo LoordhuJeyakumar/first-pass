@@ -869,6 +869,7 @@ function alignArchDiagram() {
 
   const scroll = canvas.parentElement;
   if (!scroll) return;
+  scroll.style.overflow = "hidden";
   const s = Math.min(1, scroll.clientWidth / ARCH_CANVAS_WIDTH);
   canvas.style.transform = s < 1 ? "scale(" + s + ")" : "";
   scroll.style.height = (canvas.offsetHeight * s) + "px";

@@ -36,7 +36,6 @@ dist/
 # docs/internal/ is written for us. See docs/DISCLOSURE.md.
 # Promoting anything out of here is a deliberate per-document decision, not a default.
 docs/internal/
-
 # Per-project local agent notes — machine-local, never shared
 *.local.md
 
