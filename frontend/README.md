@@ -37,14 +37,15 @@ starting (copy `.env.example` and fill in real values — never commit `.env`).
 |---|---|
 | **Single flight** | A second RUN click while a run is active returns HTTP 409. The button is also disabled in the UI. |
 | **Cooldown** | A configurable quiet period between runs prevents duplicate incidents and excess Vertex AI spend. Controlled by `CONSOLE_COOLDOWN_SECONDS` (default: 30). Returns HTTP 429 with `Retry-After`. |
-| **No credential exposure** | `GRAFANA_URL` is read from the environment at request time and never rendered as visible text. Ledger links display as `"Incident #142"` etc. — never the raw URL. |
+| **No credential exposure** | `GRAFANA_URL` / `GRAFANA_PUBLIC_DASHBOARD_URL` are read from the environment at request time and never rendered as visible text. Ledger links display as `"Incident #142 (Grafana sign-in)"` etc. — never the raw URL. |
 
 ## Environment variables
 
 | Variable | Required | Description |
 |---|---|---|
 | `GRAFANA_URL` | Yes | Grafana Cloud stack base URL. Used to build ledger deeplinks. |
-| `GRAFANA_SERVICE_ACCOUNT_TOKEN` | Yes | Service account token for the pipeline. |
+| `GRAFANA_PUBLIC_DASHBOARD_URL` | No | Externally shared Delivery Readiness URL (no login). Preferred for the orientation Dashboard link when set. |
+| `GRAFANA_SERVICE_ACCOUNT_TOKEN` | Yes | Service account token for the pipeline (needs `dashboards.public:write` to enable the public share). |
 | `GOOGLE_CLOUD_PROJECT` | Yes | GCP project ID for Vertex AI. |
 | `MCP_SERVER_URL` | Yes | URL of the self-hosted mcp-grafana server. |
 | `CONSOLE_COOLDOWN_SECONDS` | No | Cooldown in seconds between runs (default: 30). |

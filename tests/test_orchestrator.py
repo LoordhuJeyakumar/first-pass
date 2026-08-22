@@ -212,6 +212,81 @@ def test_ensure_delivery_readiness_dashboard_failure(caplog):
             assert "HTTP 500" in caplog.text
 
 
+def test_ensure_public_dashboard_share_creates_when_missing():
+    from agents.orchestrator import ensure_public_dashboard_share
+
+    get_resp = MagicMock()
+    get_resp.status_code = 404
+    get_resp.text = "not found"
+    post_resp = MagicMock()
+    post_resp.status_code = 200
+    post_resp.json.return_value = {
+        "uid": "pd-uid",
+        "accessToken": "abc123token",
+        "isEnabled": True,
+    }
+    with patch("requests.get", return_value=get_resp), patch("requests.post", return_value=post_resp):
+        ok, url = ensure_public_dashboard_share(
+            grafana_url="https://example.com",
+            token="token123",
+            dashboard_uid="first-pass-delivery-readiness",
+        )
+    assert ok is True
+    assert url == "https://example.com/public-dashboards/abc123token"
+
+
+def test_ensure_public_dashboard_share_patches_when_disabled():
+    from agents.orchestrator import ensure_public_dashboard_share
+
+    get_resp = MagicMock()
+    get_resp.status_code = 200
+    get_resp.json.return_value = {
+        "uid": "pd-uid",
+        "accessToken": "abc123token",
+        "isEnabled": False,
+        "annotationsEnabled": False,
+        "timeSelectionEnabled": False,
+    }
+    patch_resp = MagicMock()
+    patch_resp.status_code = 200
+    patch_resp.json.return_value = {
+        "uid": "pd-uid",
+        "accessToken": "abc123token",
+        "isEnabled": True,
+        "annotationsEnabled": True,
+        "timeSelectionEnabled": True,
+    }
+    with patch("requests.get", return_value=get_resp), patch("requests.patch", return_value=patch_resp) as mock_patch:
+        ok, url = ensure_public_dashboard_share(
+            grafana_url="https://example.com/",
+            token="token123",
+            dashboard_uid="first-pass-delivery-readiness",
+        )
+    assert ok is True
+    assert url == "https://example.com/public-dashboards/abc123token"
+    mock_patch.assert_called_once()
+
+
+def test_ensure_public_dashboard_share_permission_denied(caplog):
+    from agents.orchestrator import ensure_public_dashboard_share
+
+    get_resp = MagicMock()
+    get_resp.status_code = 404
+    post_resp = MagicMock()
+    post_resp.status_code = 403
+    post_resp.text = "Permissions needed: dashboards.public:write"
+    with caplog.at_level(logging.WARNING):
+        with patch("requests.get", return_value=get_resp), patch("requests.post", return_value=post_resp):
+            ok, url = ensure_public_dashboard_share(
+                grafana_url="https://example.com",
+                token="token123",
+                dashboard_uid="first-pass-delivery-readiness",
+            )
+    assert ok is False
+    assert url is None
+    assert "HTTP 403" in caplog.text
+
+
 def test_all_module_type_hints_resolve():
     import typing
     import inspect

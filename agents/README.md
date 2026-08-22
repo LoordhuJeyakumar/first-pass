@@ -32,7 +32,8 @@ pip install -r agents/requirements.txt
 Configure these variables in your `.env` file (copied from `.env.example`). Variable names are listed below; never commit real credentials:
 
 - `GRAFANA_URL` — Base URL of your Grafana Cloud instance (e.g. `https://your-stack.grafana.net`)
-- `GRAFANA_SERVICE_ACCOUNT_TOKEN` — Service Account Token with Editor permissions
+- `GRAFANA_PUBLIC_DASHBOARD_URL` — Externally shared Delivery Readiness URL (no login); set after enabling public share
+- `GRAFANA_SERVICE_ACCOUNT_TOKEN` — Service Account Token with Editor plus `dashboards.public:write` (or Admin / `fixed:dashboards.public:writer`)
 - `PROM_REMOTE_WRITE_URL` — Prometheus remote-write endpoint
 - `PROM_USERNAME` — Prometheus instance ID / username
 - `LOKI_PUSH_URL` — Loki push API endpoint

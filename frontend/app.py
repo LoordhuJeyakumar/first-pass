@@ -115,8 +115,21 @@ def _grafana_base() -> str:
     return os.getenv("GRAFANA_URL", "").rstrip("/")
 
 
+def _public_dashboard_url() -> str:
+    """Externally shared dashboard URL for anonymous viewers, or empty when unset."""
+    return os.getenv("GRAFANA_PUBLIC_DASHBOARD_URL", "").rstrip("/")
+
+
 def _dashboard_url() -> str:
-    """Delivery Readiness dashboard URL, or empty when GRAFANA_URL is unset."""
+    """
+    Delivery Readiness dashboard URL for the orientation Dashboard link.
+
+    Prefers GRAFANA_PUBLIC_DASHBOARD_URL (no login) when set; otherwise falls back
+    to the authenticated /d/{uid} path for local operator use.
+    """
+    public = _public_dashboard_url()
+    if public:
+        return public
     base = _grafana_base()
     if not base:
         return ""
@@ -211,23 +224,26 @@ def _response_to_ledger_row(name: str, response: Any, grafana: str, timestamp: O
         inc_id = inc_obj.get("incidentID") or inc_obj.get("id")
         if inc_id and grafana:
             href = f"{grafana}/a/grafana-irm-app/incidents/{inc_id}"
-            link_label = f"Incident #{inc_id}"
+            link_label = f"Incident #{inc_id} (Grafana sign-in)"
         detail = f"Created: {inc_obj.get('title', '')}"
 
     elif name == "create_annotation" and isinstance(data, dict):
         payload = data.get("Payload") if isinstance(data.get("Payload"), dict) else data
         ann_id = payload.get("id")
-        dash_uid = "first-pass-delivery-readiness"
-        if ann_id and grafana:
-            href = f"{grafana}/d/{dash_uid}"
-            link_label = f"Annotation #{ann_id} on Dashboard"
+        public = _public_dashboard_url()
+        if ann_id and (public or grafana):
+            href = public or f"{grafana}/d/first-pass-delivery-readiness"
+            if public:
+                link_label = f"Annotation #{ann_id} on Dashboard"
+            else:
+                link_label = f"Annotation #{ann_id} on Dashboard (Grafana sign-in)"
         detail = f"Annotation id={ann_id}"
 
     elif name == "alerting_manage_rules" and isinstance(data, dict):
         rule_uid = data.get("uid") or data.get("id")
         if rule_uid and grafana:
             href = f"{grafana}/alerting/{rule_uid}/view"
-            link_label = "Alert rule"
+            link_label = "Alert rule (Grafana sign-in)"
         title = data.get("title", "")
         detail = f"Rule: {title}" if title else f"uid={rule_uid}"
 
@@ -236,7 +252,7 @@ def _response_to_ledger_row(name: str, response: Any, grafana: str, timestamp: O
         inc_id = data.get("incidentID")
         if inc_id and grafana:
             href = f"{grafana}/a/grafana-irm-app/incidents/{inc_id}"
-            link_label = f"Activity on Incident #{inc_id}"
+            link_label = f"Activity on Incident #{inc_id} (Grafana sign-in)"
         detail = f"activityItemID={act_id}"
     else:
         return None
@@ -277,7 +293,7 @@ def _tool_entry_to_ledger_row(entry: dict, grafana: str) -> Optional[dict]:
             "operation": "Verify Alert Rule",
             "detail": detail,
             "href": href,
-            "link_label": "Alert rule",
+            "link_label": "Alert rule (Grafana sign-in)" if href else None,
         }
     elif entry_type == "progress":
         op_labels = {

@@ -27,7 +27,7 @@ In brief:
 - **Orchestration**: A single Google ADK agent (Python) runs on Google Cloud Platform with Gemini models via Vertex AI.
 - **Grafana MCP Server**: A self-hosted `grafana/mcp-grafana` server running in Docker on a virtual machine, configured with `-t streamable-http` and authenticated using a Grafana service-account token.
 - **Unattended Authentication**: The MCP server is self-hosted rather than using Grafana Cloud's hosted endpoint because the hosted endpoint authenticates via interactive OAuth 2.1 without a machine-token path. Self-hosting with a service-account token allows unattended agents to operate reliably without human manual authentication prompts.
-- **Deterministic Check Engine**: All clause checks are evaluated in pure, deterministic Python code; the LLM orchestrates workflows, interprets specs, and executes Grafana write actions, but never computes measurements. Integrated loudness and true peak come from a tested ffmpeg ebur128 adapter when measuring real media; the demo masters ship as authored metadata.
+- **Deterministic Check Engine**: All clause checks are evaluated in pure, deterministic Python code; the LLM orchestrates workflows and executes Grafana write actions, but never computes measurements. Integrated loudness and true peak come from a tested ffmpeg ebur128 adapter when measuring real media; the demo masters ship as authored metadata.
 
 For an introduction to film delivery QC terminology, see [`docs/DOMAIN.md`](docs/DOMAIN.md).
 

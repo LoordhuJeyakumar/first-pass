@@ -399,11 +399,39 @@ class TestLedgerBuilder:
 
         assert len(entries) == 1
         entry = entries[0]
-        assert entry["link_label"] == "Incident #42"
+        assert entry["link_label"] == "Incident #42 (Grafana sign-in)"
         assert entry["href"] is not None
         assert "42" in entry["href"]
         # URL must not contain any visible text that leaks the hostname in the label
         assert entry["link_label"] != entry["href"]
+
+    def test_annotation_response_uses_public_dashboard_url(self):
+        import frontend.app as app_mod
+
+        tool_logs = [
+            {
+                "type": "response",
+                "name": "create_annotation",
+                "response": {
+                    "content": [
+                        {"type": "text", "text": '{"Payload": {"id": 99}}'},
+                    ]
+                },
+            }
+        ]
+        public = "https://your-stack.grafana.net/public-dashboards/PUBLICTOKEN123"
+        with patch.dict(
+            "os.environ",
+            {
+                "GRAFANA_URL": "https://your-stack.grafana.net",
+                "GRAFANA_PUBLIC_DASHBOARD_URL": public,
+            },
+        ):
+            entries = app_mod._build_ledger_entries(tool_logs)
+        assert len(entries) == 1
+        assert entries[0]["href"] == public
+        assert entries[0]["link_label"] == "Annotation #99 on Dashboard"
+        assert "sign-in" not in entries[0]["link_label"]
 
     def test_missing_incident_id_produces_no_link(self):
         import frontend.app as app_mod
@@ -478,7 +506,11 @@ class TestLedgerBuilder:
 class TestIndexOrientation:
     def test_idle_page_states_accurate_provenance_and_github(self):
         client = _make_client()
-        with patch.dict("os.environ", {"GRAFANA_URL": ""}, clear=False):
+        with patch.dict(
+            "os.environ",
+            {"GRAFANA_URL": "", "GRAFANA_PUBLIC_DASHBOARD_URL": ""},
+            clear=False,
+        ):
             html = client.get("/").text
         assert "evaluated from the master's technical metadata" in html
         assert "demo masters ship as authored metadata" in html
@@ -487,9 +519,33 @@ class TestIndexOrientation:
 
     def test_dashboard_link_uses_env_url_not_as_visible_text(self):
         client = _make_client()
-        with patch.dict("os.environ", {"GRAFANA_URL": "https://your-stack.grafana.net"}, clear=False):
+        with patch.dict(
+            "os.environ",
+            {
+                "GRAFANA_URL": "https://your-stack.grafana.net",
+                "GRAFANA_PUBLIC_DASHBOARD_URL": "",
+            },
+            clear=False,
+        ):
             html = client.get("/").text
         assert 'data-href="https://your-stack.grafana.net/d/first-pass-delivery-readiness"' in html
+        assert ">Dashboard</a>" in html
+        assert "your-stack.grafana.net</a>" not in html
+
+    def test_dashboard_link_prefers_public_url(self):
+        client = _make_client()
+        public = "https://your-stack.grafana.net/public-dashboards/PUBLICTOKEN123"
+        with patch.dict(
+            "os.environ",
+            {
+                "GRAFANA_URL": "https://your-stack.grafana.net",
+                "GRAFANA_PUBLIC_DASHBOARD_URL": public,
+            },
+            clear=False,
+        ):
+            html = client.get("/").text
+        assert f'data-href="{public}"' in html
+        assert "/d/first-pass-delivery-readiness" not in html
         assert ">Dashboard</a>" in html
         assert "your-stack.grafana.net</a>" not in html
 
@@ -518,7 +574,11 @@ class TestHowItWorksPage:
     def test_how_it_works_does_not_leak_grafana_hostname(self):
         client = _make_client()
         sentinel = "https://your-stack.grafana.net"
-        with patch.dict("os.environ", {"GRAFANA_URL": sentinel}, clear=False):
+        with patch.dict(
+            "os.environ",
+            {"GRAFANA_URL": sentinel, "GRAFANA_PUBLIC_DASHBOARD_URL": ""},
+            clear=False,
+        ):
             html = client.get("/how-it-works").text
             console = client.get("/").text
         assert "your-stack.grafana.net" not in html

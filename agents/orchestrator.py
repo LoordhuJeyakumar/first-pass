@@ -426,6 +426,110 @@ def ensure_delivery_readiness_dashboard(
         return (False, None)
 
 
+_PUBLIC_SHARE_BODY = {
+    "isEnabled": True,
+    "annotationsEnabled": True,
+    "timeSelectionEnabled": True,
+    "share": "public",
+}
+
+
+def ensure_public_dashboard_share(
+    grafana_url: str,
+    token: str,
+    dashboard_uid: str,
+) -> Tuple[bool, Optional[str]]:
+    """
+    Idempotently enable an externally shared (public) dashboard for anonymous viewers.
+
+    GET existing share → PATCH if present → POST if missing.
+    Failures are logged and do not raise; callers must not abort a QC run on share errors.
+    Returns (ok, public_browser_url) where the URL is
+    ``{grafana_url}/public-dashboards/{accessToken}`` when successful.
+    """
+    if not grafana_url or not token or not dashboard_uid:
+        logger.warning("Public dashboard share skipped: missing URL, token, or dashboard UID.")
+        return (False, None)
+    try:
+        import requests
+
+        base_url = grafana_url.rstrip("/")
+        headers = {
+            "Authorization": f"Bearer {token}",
+            "Content-Type": "application/json",
+            "Accept": "application/json",
+        }
+        endpoint = f"{base_url}/api/dashboards/uid/{dashboard_uid}/public-dashboards/"
+        get_resp = requests.get(endpoint, headers=headers, timeout=10)
+
+        share_data: Optional[Dict[str, Any]] = None
+        if get_resp.status_code == 200:
+            share_data = get_resp.json()
+            public_uid = share_data.get("uid")
+            needs_patch = (
+                not share_data.get("isEnabled")
+                or not share_data.get("annotationsEnabled")
+                or not share_data.get("timeSelectionEnabled")
+            )
+            if needs_patch and public_uid:
+                patch_resp = requests.patch(
+                    f"{endpoint}{public_uid}",
+                    json=_PUBLIC_SHARE_BODY,
+                    headers=headers,
+                    timeout=10,
+                )
+                if patch_resp.status_code == 200:
+                    share_data = patch_resp.json()
+                    logger.info("Updated public dashboard share for UID %s", dashboard_uid)
+                else:
+                    logger.warning(
+                        "Public dashboard PATCH returned HTTP %s: %s",
+                        patch_resp.status_code,
+                        patch_resp.text,
+                    )
+                    return (False, None)
+            else:
+                logger.info("Public dashboard share already enabled for UID %s", dashboard_uid)
+        elif get_resp.status_code == 404:
+            post_resp = requests.post(
+                endpoint,
+                json=_PUBLIC_SHARE_BODY,
+                headers=headers,
+                timeout=10,
+            )
+            if post_resp.status_code in (200, 201):
+                share_data = post_resp.json()
+                logger.info("Created public dashboard share for UID %s", dashboard_uid)
+            else:
+                logger.warning(
+                    "Public dashboard POST returned HTTP %s: %s",
+                    post_resp.status_code,
+                    post_resp.text,
+                )
+                return (False, None)
+        else:
+            logger.warning(
+                "Public dashboard GET returned HTTP %s: %s",
+                get_resp.status_code,
+                get_resp.text,
+            )
+            return (False, None)
+
+        access_token = (share_data or {}).get("accessToken")
+        if not access_token:
+            logger.warning("Public dashboard share response missing accessToken for UID %s", dashboard_uid)
+            return (False, None)
+        public_url = f"{base_url}/public-dashboards/{access_token}"
+        return (True, public_url)
+    except Exception as exc:
+        logger.warning(
+            "Public dashboard share failed with exception (%s): %s",
+            type(exc).__name__,
+            exc,
+        )
+        return (False, None)
+
+
 def parse_mcp_response_data(response_val: Any) -> Any:
     """Unwraps inner JSON or text from MCP response payloads."""
     if isinstance(response_val, dict) and "content" in response_val:
@@ -876,6 +980,7 @@ async def run_adk_orchestration(
             "title": "Delivery Readiness",
             "schemaVersion": 36,
             "editable": True,
+            "refresh": "30s",
             "time": {"from": "now-14d", "to": "now"},
             "annotations": {
                 "list": [
@@ -1164,12 +1269,19 @@ async def run_adk_orchestration(
 
         grafana_url = os.getenv("GRAFANA_URL", "")
         emit_progress(on_tool_event, "dashboard", "Publishing dashboard")
-        ensure_delivery_readiness_dashboard(
+        published_ok, published_uid = ensure_delivery_readiness_dashboard(
             grafana_url=grafana_url,
             token=token,
             folder_uid="first-pass-qc",
             dashboard_template=dashboard_template,
         )
+        if published_ok:
+            share_uid = published_uid or "first-pass-delivery-readiness"
+            ensure_public_dashboard_share(
+                grafana_url=grafana_url,
+                token=token,
+                dashboard_uid=share_uid,
+            )
 
         spec_id = report.get("spec_id") or (spec or {}).get("spec_id") or "UNKNOWN"
         desired = desired_alert_rule(spec, spec_id)

@@ -11,7 +11,7 @@ First Pass uses a self-hosted `grafana/mcp-grafana` container running on a GCE V
 The container reads environment variables directly from `.env` in the repository root:
 
 - `GRAFANA_URL` — Base URL of your Grafana Cloud instance (e.g. `https://your-stack.grafana.net`)
-- `GRAFANA_SERVICE_ACCOUNT_TOKEN` — Service Account Token with Editor permissions
+- `GRAFANA_SERVICE_ACCOUNT_TOKEN` — Service Account Token with Editor plus `dashboards.public:write` (or Admin)
 
 ## Running the MCP Server with Docker Compose
 

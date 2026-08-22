@@ -113,7 +113,7 @@ Agent count is deliberately one. It would change only if First Pass ingested thi
 
 ## Deterministic Computation Principle
 
-The LLM is responsible for orchestration, spec interpretation, prose generation, and tool coordination. It **never computes numerical measurements**.
+The LLM is responsible for orchestration, prose generation, and tool coordination. It never computes numerical measurements and never interprets the delivery specification — the deterministic check engine does both, and the agent receives its structured output.
 
 All measurement comparisons (e.g., verifying integrated loudness of −24.0 LUFS against a −27.0 ±2 LUFS clause) are executed by pure Python logic. This ensures:
 1. Every verdict and blocker report is 100% reproducible and verifiable.
@@ -153,7 +153,7 @@ The operator console (`frontend/`) is a FastAPI + Jinja2 + vanilla JavaScript si
 
 1. **Verdict Banner** — colour-coded PASS / REJECT, scaled for readability from across a room at 1080p.
 2. **Fix List** — every finding with clause ID (monospace, left-aligned), severity badge (glyph + label, not colour alone), measured vs expected in tabular-figure monospace, language, and human-readable message.
-3. **Action Ledger** — incremental live log of every MCP write the agent performs. Rows append with a CSS keyframe animation. Each row links into Grafana (incident, annotation, alert rule) using the identifier returned by the MCP tool response. The Grafana hostname is read from `GRAFANA_URL` at request time and never rendered as visible text — link text reads `"Incident #142"`, not the URL.
+3. **Action Ledger** — incremental live log of every MCP write the agent performs. Rows append with a CSS keyframe animation. Each row links into Grafana (incident, annotation, alert rule) using the identifier returned by the MCP tool response. The Grafana hostname is read from `GRAFANA_URL` at request time and never rendered as visible text — link text reads `"Incident #142 (Grafana sign-in)"`, not the URL. The orientation Dashboard link prefers `GRAFANA_PUBLIC_DASHBOARD_URL` when set so judges can open Delivery Readiness without logging in.
 
 ### Trigger button
 
