@@ -1,0 +1,46 @@
+{# Shared architecture diagram canvas — wires drawn by console.js #}
+<div class="arch-scroll">
+  <div class="arch-canvas" id="arch-canvas">
+    <div class="arch-title">First Pass — System Architecture</div>
+    <svg class="arch-wires" id="arch-wires" viewBox="0 0 1856 1080" aria-hidden="true"></svg>
+
+    <div class="arch-box" id="arch-inputs">
+      <div class="arch-box-label">Inputs</div>
+      <p>Master metadata JSON</p>
+      <p style="margin-top:8px;color:var(--text-muted)">Destination spec JSON<br><span class="mono" style="font-size:11px">(StreamOne or HallArc — both fictional)</span></p>
+    </div>
+
+    <div class="arch-box arch-engine-core" id="arch-engine">
+      <div class="arch-box-label">Deterministic Python Check Engine</div>
+      <p>Evaluates LUFS, True Peak, HDR, subtitles, packaging, CBFC gating from the master's technical metadata. LLM never computes.</p>
+    </div>
+
+    <div class="arch-box arch-agent-box" id="arch-agent">
+      <div class="arch-box-label">FirstPassOrchestrator · single ADK LlmAgent</div>
+      <p style="margin-bottom:8px;color:var(--text-muted)">Four MCP writes only:</p>
+      <ul>
+        <li>create_incident</li>
+        <li>add_activity_to_incident</li>
+        <li>create_annotation</li>
+        <li>alerting_manage_rules</li>
+      </ul>
+    </div>
+
+    <div class="arch-box" id="arch-grafana">
+      <div class="arch-box-label">Grafana Cloud</div>
+      <ul>
+        <li>Delivery Readiness dashboard</li>
+        <li>Incidents</li>
+        <li>Timeline annotations</li>
+        <li>Alert rules</li>
+      </ul>
+    </div>
+
+    <div class="arch-box" id="arch-console">
+      <div class="arch-box-label">Operator Console</div>
+      <p>Verdict banner · ranked fix plan · per-language readiness · MCP action ledger</p>
+    </div>
+
+    <div class="arch-footer">LLM orchestrates and writes — never computes measurements</div>
+  </div>
+</div>

@@ -1,0 +1,331 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>How it works — First Pass</title>
+  <meta name="description" content="How First Pass evaluates a film master against a destination spec, and how to read the operator console.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg-base:      #111217;
+      --bg-panel:     #181b1f;
+      --bg-row-alt:   #14171b;
+      --border:       #2d2f33;
+      --border-light: #3d4045;
+      --text-primary: #d9d9d9;
+      --text-muted:   #8d9095;
+      --text-dim:     #555b63;
+      --mono:         'JetBrains Mono', 'Fira Mono', 'Consolas', monospace;
+      --font-ui:      'Inter', system-ui, -apple-system, sans-serif;
+      --pass:         #73bf69;
+      --warn:         #f89b29;
+      --space-xs:     4px;
+      --space-sm:     8px;
+      --space-md:     16px;
+      --space-lg:     24px;
+      --space-xl:     40px;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    html, body {
+      min-height: 100%;
+      background: var(--bg-base);
+      color: var(--text-primary);
+      font-family: var(--font-ui);
+      font-size: 15px;
+      line-height: 1.65;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    a { color: var(--text-muted); text-underline-offset: 2px; }
+    a:hover { color: var(--text-primary); }
+    a:focus-visible { outline: 2px solid var(--warn); outline-offset: 2px; }
+
+    .guide-top {
+      position: sticky;
+      top: 0;
+      z-index: 30;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: var(--space-md);
+      padding: var(--space-sm) var(--space-lg);
+      background: var(--bg-panel);
+      border-bottom: 1px solid var(--border);
+    }
+
+    .guide-brand {
+      font-family: var(--mono);
+      font-size: 13px;
+      font-weight: 700;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      color: var(--text-primary);
+      text-decoration: none;
+    }
+    .guide-brand:hover { color: #fff; }
+
+    .guide-back {
+      font-family: var(--mono);
+      font-size: 12px;
+      letter-spacing: 0.04em;
+      color: var(--text-muted);
+      text-decoration: none;
+    }
+    .guide-back:hover { color: var(--text-primary); text-decoration: underline; }
+
+    .guide-main {
+      width: 100%;
+      max-width: none;
+      margin: 0;
+      padding: var(--space-xl) 0 calc(var(--space-xl) * 2);
+      display: grid;
+      grid-template-columns: 1fr min(72ch, 100% - 48px) 1fr;
+    }
+    .guide-main > * { grid-column: 2; }
+    .guide-main > .full-bleed {
+      grid-column: 1 / -1;
+      width: 100%;
+      max-width: 1856px;
+      margin-inline: auto;
+    }
+
+    .guide-main h1 {
+      font-family: var(--mono);
+      font-size: 22px;
+      font-weight: 700;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      margin-bottom: var(--space-lg);
+      color: var(--text-primary);
+    }
+
+    .guide-main h2 {
+      font-family: var(--mono);
+      font-size: 13px;
+      font-weight: 700;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--text-muted);
+      margin-top: var(--space-xl);
+      margin-bottom: var(--space-md);
+      padding-bottom: var(--space-sm);
+      border-bottom: 1px solid var(--border);
+    }
+
+    .guide-main p { margin-bottom: var(--space-md); color: var(--text-primary); }
+    .guide-main ul {
+      margin: 0 0 var(--space-md) 1.25em;
+      color: var(--text-primary);
+    }
+    .guide-main li { margin-bottom: var(--space-sm); }
+    .guide-main li::marker { color: var(--text-dim); }
+
+    .guide-diagram.arch-host {
+      width: 100%;
+      max-width: 1856px;
+      margin-top: var(--space-md);
+      margin-bottom: var(--space-lg);
+    }
+
+    .mono { font-family: var(--mono); }
+
+    .arch-scroll { overflow-x: auto; }
+
+    .arch-host .arch-canvas {
+      position: relative;
+      width: 1856px;
+      min-height: 1080px;
+      transform-origin: top left;
+    }
+
+    .arch-host .arch-title {
+      position: absolute;
+      top: 36px;
+      left: 64px;
+      right: 64px;
+      font-family: var(--mono);
+      font-size: 13px;
+      font-weight: 700;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      color: var(--text-muted);
+      padding-bottom: 12px;
+      border-bottom: 2px solid var(--border);
+    }
+
+    .arch-host .arch-footer {
+      position: absolute;
+      bottom: 28px;
+      left: 64px;
+      right: 64px;
+      font-family: var(--mono);
+      font-size: 13px;
+      color: var(--text-dim);
+      letter-spacing: 0.06em;
+      text-align: center;
+      padding-top: 12px;
+      border-top: 1px solid var(--border);
+    }
+
+    .arch-host .arch-wires {
+      position: absolute;
+      inset: 0;
+      width: 1856px;
+      height: 1080px;
+      pointer-events: none;
+      z-index: 1;
+    }
+
+    .arch-host .arch-box {
+      position: absolute;
+      background: var(--bg-panel);
+      border: 1px solid var(--border-light);
+      padding: 16px 18px;
+      height: auto;
+      z-index: 2;
+    }
+
+    .arch-host .arch-box-label {
+      font-family: var(--mono);
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--text-muted);
+      margin-bottom: 8px;
+      margin-top: 0;
+      padding-bottom: 0;
+      border-bottom: none;
+    }
+
+    .arch-host .arch-box p {
+      font-size: 14px;
+      color: var(--text-primary);
+      line-height: 1.45;
+      margin: 0;
+    }
+
+    .arch-host .arch-box p + p { margin-top: 8px; }
+
+    .arch-host .arch-box ul {
+      list-style: none;
+      padding: 0;
+      margin: 0;
+    }
+
+    .arch-host .arch-box li {
+      font-family: var(--mono);
+      font-size: 13px;
+      padding: 2px 0;
+      margin: 0;
+      color: var(--text-muted);
+    }
+
+    .arch-host .arch-agent-box li::before { content: "→ "; color: var(--warn); }
+    .arch-host .arch-engine-core { border-color: var(--pass); }
+    .arch-host .arch-agent-box { border-color: var(--warn); }
+
+    .arch-host #arch-inputs  { left: 64px;   top: 300px; width: 280px; }
+    .arch-host #arch-engine  { left: 520px;  top: 150px; width: 560px; }
+    .arch-host #arch-agent   { left: 520px;  top: 500px; width: 560px; }
+    .arch-host #arch-grafana { left: 1380px; top: 240px; width: 476px; }
+    .arch-host #arch-console { left: 64px;   top: 860px; width: 1792px; }
+
+    .arch-host .arch-edge {
+      position: absolute;
+      font-family: var(--mono);
+      font-size: 11px;
+      line-height: 1.3;
+      color: var(--text-muted);
+      background: var(--bg-base);
+      border: 1px solid var(--border);
+      padding: 4px 8px;
+      white-space: nowrap;
+      z-index: 3;
+      transform: translate(-50%, -50%);
+    }
+
+    .arch-host .arch-edge.dashed {
+      color: var(--warn);
+      border-style: dashed;
+      border-color: var(--warn);
+    }
+
+    .guide-links {
+      list-style: none;
+      margin-left: 0;
+    }
+    .guide-links li { margin-bottom: var(--space-sm); }
+
+    @media (prefers-reduced-motion: reduce) {
+      * { scroll-behavior: auto; }
+    }
+  </style>
+</head>
+<body>
+  <header class="guide-top">
+    <a class="guide-brand" href="/">First Pass</a>
+    <a class="guide-back" href="/">← Console</a>
+  </header>
+
+  <main class="guide-main">
+    <article>
+      <h1>How it works</h1>
+
+      <h2>What this is</h2>
+      <p>First Pass is an operator console that checks a finished film master against a streaming destination’s delivery rules before you submit. Pure Python evaluates the master’s technical metadata; a single bounded agent then writes the operational follow-through into Grafana — incidents, annotations, and alert rules — when blockers appear.</p>
+
+      <h2>The problem</h2>
+      <p>Industry commentary from post-production delivery specialists puts first-submission QC failure in the 20–30% range — a directional figure, <a href="https://github.com/LoordhuJeyakumar/first-pass/blob/master/docs/evidence.md" target="_blank" rel="noopener noreferrer">not an official published statistic</a>. Most often the cause is mundane and preventable: an audio mix delivered at theatrical loudness (~−24 LUFS) against a streaming platform spec requiring ~−27 LUFS. Every rejection incurs redelivery fees and risks missing an announced premiere date.</p>
+
+      <h2>How it works</h2>
+      <p>A deterministic check engine compares the master to the selected destination spec and returns structured findings. Python publishes the Delivery Readiness dashboard and telemetry directly. The agent never computes those measurements — it only acts through four allowlisted Grafana tools when the engine reports blockers.</p>
+    </article>
+
+    <div class="guide-diagram arch-host full-bleed">
+      {% include "partials/arch_diagram.html" %}
+    </div>
+
+    <article>
+      <h2>How to read the console</h2>
+      <p><strong>Verdict banner.</strong> After RUN finishes, the burn-in frame shows PASS (green) or REJECT — N blockers (red). The destination, languages, and run date sit in the corners; elapsed timecode ticks at 24 fps while a run is active.</p>
+      <p><strong>Loudness meters.</strong> Bars are relative, not absolute. 0 LU is this destination’s loudness target (for StreamOne that is −27 LUFS; for HallArc, −24 LUFS). A bar left of centre is quieter than required; right of centre is louder. True Peak sits on a separate shared axis against the destination’s ceiling.</p>
+      <p><strong>Fix plan.</strong> Each row is a non-conformance: clause, severity, measured vs expected, language, and finding. Blockers stop delivery; warnings do not. Jobs are ordered by how long the fix takes to arrange — longest lead time first — not by processing order.</p>
+      <p><strong>Language readiness.</strong> Per-language scores show how close each version is to shippable. For a simultaneous multi-language release, certification of the original language can gate clearance of the dubs, so one pending certificate can hold up every other version.</p>
+      <p><strong>Action ledger.</strong> Every agent write to Grafana appears here with time, operation, detail, and a link into the stack. On a PASS the agent writes nothing.</p>
+
+      <h2>The two destination specs</h2>
+      <p>StreamOne and HallArc are two fictional destinations authored for this project, with deliberately different targets — which is why the same master can pass one and fail the other.</p>
+      <ul>
+        <li><strong>StreamOne</strong> — streaming-style loudness at −27 LUFS (±2 LU), True Peak ceiling −2.0 dBTP, wide-gamut HDR (BT.2020).</li>
+        <li><strong>HallArc</strong> — theatrical-style loudness at −24 LUFS (±1 LU), True Peak ceiling −1.0 dBTP, BT.709 picture.</li>
+      </ul>
+      <p>A theatrical mix near −24 LUFS can clear HallArc and still fail StreamOne on loudness alone.</p>
+
+      <h2>Guardrails</h2>
+      <ul>
+        <li>One bounded Google ADK agent — not a multi-agent crew.</li>
+        <li>Four allowlisted MCP tools only: create_incident, add_activity_to_incident, create_annotation, alerting_manage_rules.</li>
+        <li>Deterministic Python evaluates every clause; the model never computes measurements.</li>
+        <li>The Delivery Readiness dashboard is published by Python over REST (<span class="mono">POST /api/dashboards/db</span>), not by the agent.</li>
+      </ul>
+
+      <h2>Links out</h2>
+      <ul class="guide-links">
+        <li><a href="https://github.com/LoordhuJeyakumar/first-pass" target="_blank" rel="noopener noreferrer">Source repository</a></li>
+        <li><a href="https://github.com/LoordhuJeyakumar/first-pass/blob/master/docs/evidence.md" target="_blank" rel="noopener noreferrer">docs/evidence.md</a> — sourced claims</li>
+        <li><a href="https://github.com/LoordhuJeyakumar/first-pass/blob/master/docs/ARCHITECTURE.md" target="_blank" rel="noopener noreferrer">docs/ARCHITECTURE.md</a> — system design</li>
+        <li><a href="https://github.com/LoordhuJeyakumar/first-pass/blob/master/docs/DOMAIN.md" target="_blank" rel="noopener noreferrer">docs/DOMAIN.md</a> — delivery QC primer</li>
+        <li><a href="/">← Operator console</a></li>
+      </ul>
+    </article>
+  </main>
+
+  <script src="/static/console.js"></script>
+</body>
+</html>

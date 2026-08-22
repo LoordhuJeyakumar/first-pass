@@ -495,6 +495,40 @@ class TestIndexOrientation:
 
 
 # ---------------------------------------------------------------------------
+# § How-it-works guide page
+# ---------------------------------------------------------------------------
+
+class TestHowItWorksPage:
+    def test_how_it_works_returns_200_with_console_link(self):
+        client = _make_client()
+        resp = client.get("/how-it-works")
+        assert resp.status_code == 200
+        assert "← Console" in resp.text
+        assert 'href="/"' in resp.text
+
+    def test_evidence_link_uses_master_branch_nowhere_main(self):
+        client = _make_client()
+        html = client.get("/how-it-works").text
+        assert "blob/master/docs/evidence.md" in html
+        assert "blob/main" not in html
+        index_html = client.get("/").text
+        assert "blob/master/docs/evidence.md" in index_html
+        assert "blob/main" not in index_html
+
+    def test_how_it_works_does_not_leak_grafana_hostname(self):
+        client = _make_client()
+        sentinel = "https://your-stack.grafana.net"
+        with patch.dict("os.environ", {"GRAFANA_URL": sentinel}, clear=False):
+            html = client.get("/how-it-works").text
+            console = client.get("/").text
+        assert "your-stack.grafana.net" not in html
+        assert sentinel not in html
+        # Console may embed the URL in data-href — that is intentional.
+        assert 'data-href="https://your-stack.grafana.net/d/first-pass-delivery-readiness"' in console
+        assert "your-stack.grafana.net</a>" not in console
+
+
+# ---------------------------------------------------------------------------
 # § Thread safety (concurrency)
 # ---------------------------------------------------------------------------
 

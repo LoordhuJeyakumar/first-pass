@@ -91,8 +91,19 @@ document.addEventListener("DOMContentLoaded", () => {
   wireGlossary();
   wireHowItWorks();
 
+  // The guide page renders the diagram with no toggle to trigger it.
+  const archCanvas = document.getElementById("arch-canvas");
+  if (archCanvas && !document.getElementById("howitworks-toggle")) {
+    requestAnimationFrame(refreshArchDiagram);
+    window.addEventListener("resize", () => requestAnimationFrame(refreshArchDiagram));
+  }
+
   const fixtureRun = new URLSearchParams(window.location.search).get("run");
-  if (fixtureRun) applyRemoteRun(fixtureRun);
+  if (fixtureRun) {
+    applyRemoteRun(fixtureRun);
+  } else if (elRunBtn) {
+    restoreStoredRun();
+  }
 });
 
 // ---------------------------------------------------------------------------
@@ -237,6 +248,7 @@ async function pollRun() {
     stopPolling();
     stopTC();
     clearPhase();
+    storeRunId(activeRunId);
     renderVerdict(state);
     renderDurationStrip(state.ledger || []);
     safeRender(() => renderAudioMeters(state.evaluations || []), "audioMeters");
@@ -271,20 +283,27 @@ function stopPolling() {
 // QC Slate Metadata
 // ---------------------------------------------------------------------------
 
-async function applyRemoteRun(runId) {
+async function applyRemoteRun(runId, opts) {
+  const quiet = opts && opts.quiet;
   let response;
   try {
     response = await fetch(`/api/run/${runId}`);
   } catch (err) {
-    setStatus(`Fixture fetch failed: ${err.message}`, "error");
+    if (!quiet) setStatus(`Fixture fetch failed: ${err.message}`, "error");
+    return;
+  }
+  if (response.status === 404) {
+    clearStoredRunId();
+    if (!quiet) setStatus(`Fixture run not found (${response.status}).`, "error");
     return;
   }
   if (!response.ok) {
-    setStatus(`Fixture run not found (${response.status}).`, "error");
+    if (!quiet) setStatus(`Fixture run not found (${response.status}).`, "error");
     return;
   }
   const state = await response.json();
   activeRunId = runId;
+  storeRunId(runId);
   renderedLedgerCount = 0;
   appendNewLedgerRows(state.ledger || []);
   updateSlate(state);
@@ -297,8 +316,42 @@ async function applyRemoteRun(runId) {
       "fixList"
     );
     safeRender(() => renderReadiness(state.readiness || {}, state), "readiness");
-    setStatus("Fixture loaded.", "info");
+    if (quiet) {
+      setStatus("Showing your last run. Click RUN to re-evaluate.", "info");
+    } else {
+      setStatus("Fixture loaded.", "info");
+    }
   }
+}
+
+const RUN_STORAGE_KEY = "first-pass-run-id";
+
+function storeRunId(runId) {
+  if (!runId) return;
+  try {
+    sessionStorage.setItem(RUN_STORAGE_KEY, runId);
+  } catch (_) {
+    /* private mode / quota — ignore */
+  }
+}
+
+function clearStoredRunId() {
+  try {
+    sessionStorage.removeItem(RUN_STORAGE_KEY);
+  } catch (_) {
+    /* ignore */
+  }
+}
+
+function restoreStoredRun() {
+  let runId = null;
+  try {
+    runId = sessionStorage.getItem(RUN_STORAGE_KEY);
+  } catch (_) {
+    return;
+  }
+  if (!runId) return;
+  applyRemoteRun(runId, { quiet: true });
 }
 
 function updateSlate(state) {
@@ -747,8 +800,14 @@ function wireDashboardLink() {
 
 function positionGloss(btn, pop) {
   const r = btn.getBoundingClientRect();
-  pop.style.top = `${Math.round(r.bottom + 6)}px`;
-  pop.style.left = `${Math.round(r.left)}px`;
+  const pr = pop.getBoundingClientRect();
+  let top = r.bottom + 6;
+  if (top + pr.height > window.innerHeight - 8) {
+    top = Math.max(8, r.top - pr.height - 6);
+  }
+  const left = Math.min(r.left, window.innerWidth - pr.width - 8);
+  pop.style.top = Math.round(top) + "px";
+  pop.style.left = Math.round(Math.max(8, left)) + "px";
 }
 
 function hideOpenGlossaries() {
@@ -929,20 +988,55 @@ function wireHowItWorks() {
   const lanes = document.querySelector(".lanes");
   if (!toggle || !panel || !lanes) return;
 
-  function setOpen(open) {
+  const LABEL_CLOSED = "How it works";
+  const LABEL_OPEN = "← Back to console";
+  let syncingHistory = false;
+
+  function setOpen(open, fromHistory) {
     panel.hidden = !open;
     lanes.hidden = open;
     toggle.setAttribute("aria-expanded", open ? "true" : "false");
+    toggle.textContent = open ? LABEL_OPEN : LABEL_CLOSED;
     if (open) {
       hideOpenGlossaries();
       requestAnimationFrame(() => {
         refreshArchDiagram();
       });
+      if (!fromHistory && !(history.state && history.state.howitworks)) {
+        syncingHistory = true;
+        history.pushState({ howitworks: true }, "", "#how-it-works");
+        syncingHistory = false;
+      }
+    } else if (!fromHistory && history.state && history.state.howitworks) {
+      syncingHistory = true;
+      history.back();
+      syncingHistory = false;
     }
   }
 
   toggle.addEventListener("click", () => {
-    setOpen(panel.hidden);
+    setOpen(panel.hidden, false);
+  });
+
+  document.querySelectorAll("[data-hiw-close]").forEach((btn) => {
+    btn.addEventListener("click", () => setOpen(false, false));
+  });
+
+  window.addEventListener("popstate", () => {
+    if (syncingHistory) return;
+    if (history.state && history.state.howitworks) {
+      setOpen(true, true);
+    } else {
+      setOpen(false, true);
+    }
+  });
+
+  document.addEventListener("keydown", (e) => {
+    if (e.key !== "Escape") return;
+    if (panel.hidden) return;
+    const glossOpen = document.querySelector(".gloss-pop:popover-open");
+    if (glossOpen) return;
+    setOpen(false, false);
   });
 
   window.addEventListener("resize", () => {
@@ -950,6 +1044,13 @@ function wireHowItWorks() {
       requestAnimationFrame(refreshArchDiagram);
     }
   });
+
+  if (location.hash === "#how-it-works") {
+    setOpen(true, true);
+    if (!(history.state && history.state.howitworks)) {
+      history.replaceState({ howitworks: true }, "", "#how-it-works");
+    }
+  }
 }
 
 // ---------------------------------------------------------------------------

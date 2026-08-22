@@ -3,6 +3,7 @@ First Pass — Operator Console (FastAPI)
 
 Single-page web app that provides:
   - GET  /           : Renders the operator console HTML page.
+  - GET  /how-it-works: Judge-facing guide (problem, architecture, how to read the console).
   - GET  /api/masters: Lists available master files from data/masters/.
   - GET  /api/specs  : Lists available spec files from data/specs/.
   - POST /api/run    : Starts a pipeline run in a background thread; returns run_id.
@@ -401,6 +402,16 @@ async def index(request: Request) -> HTMLResponse:
             "spec_labels": SPEC_LABELS,
             "grafana_dashboard_url": _dashboard_url(),
         },
+    )
+
+
+@app.get("/how-it-works", response_class=HTMLResponse)
+async def how_it_works(request: Request) -> HTMLResponse:
+    """Renders the judge-facing how-it-works guide. No Grafana hostname in context."""
+    return templates.TemplateResponse(
+        request=request,
+        name="how_it_works.html",
+        context={},
     )
 
 

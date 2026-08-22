@@ -953,6 +953,45 @@
       padding-top: var(--space-lg);
     }
 
+    .hiw-back-bar {
+      position: sticky;
+      top: 0;
+      z-index: 20;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: var(--space-md);
+      padding: var(--space-sm) 0;
+      margin-bottom: var(--space-md);
+      background: var(--bg-base);
+      border-bottom: 1px solid var(--border);
+    }
+
+    .hiw-back {
+      font: inherit;
+      font-family: var(--mono);
+      font-size: 12px;
+      letter-spacing: 0.04em;
+      color: var(--text-muted);
+      background: none;
+      border: none;
+      padding: var(--space-xs) 0;
+      cursor: pointer;
+    }
+    .hiw-back:hover { color: var(--text-primary); text-decoration: underline; }
+    .hiw-back:focus-visible {
+      outline: 2px solid var(--warn);
+      outline-offset: 2px;
+    }
+
+    .hiw-guide-link {
+      font-family: var(--mono);
+      font-size: 12px;
+      color: var(--text-muted);
+      text-decoration: none;
+    }
+    .hiw-guide-link:hover { color: var(--text-primary); text-decoration: underline; }
+
     .hiw-problem {
       max-width: 72ch;
       color: var(--text-primary);
@@ -977,16 +1016,21 @@
       border-top: 1px solid var(--border);
     }
 
+    .hiw-back-after {
+      margin-top: var(--space-lg);
+      margin-bottom: var(--space-md);
+    }
+
     .arch-scroll { overflow-x: auto; }
 
-    #howitworks .arch-canvas {
+    .arch-host .arch-canvas {
       position: relative;
       width: 1856px;
       min-height: 1080px;
       transform-origin: top left;
     }
 
-    #howitworks .arch-title {
+    .arch-host .arch-title {
       position: absolute;
       top: 36px;
       left: 64px;
@@ -1001,7 +1045,7 @@
       border-bottom: 2px solid var(--border);
     }
 
-    #howitworks .arch-footer {
+    .arch-host .arch-footer {
       position: absolute;
       bottom: 28px;
       left: 64px;
@@ -1015,7 +1059,7 @@
       border-top: 1px solid var(--border);
     }
 
-    #howitworks .arch-wires {
+    .arch-host .arch-wires {
       position: absolute;
       inset: 0;
       width: 1856px;
@@ -1024,7 +1068,7 @@
       z-index: 1;
     }
 
-    #howitworks .arch-box {
+    .arch-host .arch-box {
       position: absolute;
       background: var(--bg-panel);
       border: 1px solid var(--border-light);
@@ -1033,7 +1077,7 @@
       z-index: 2;
     }
 
-    #howitworks .arch-box h2 {
+    .arch-host .arch-box-label {
       font-family: var(--mono);
       font-size: 12px;
       font-weight: 700;
@@ -1043,39 +1087,39 @@
       margin-bottom: 8px;
     }
 
-    #howitworks .arch-box p {
+    .arch-host .arch-box p {
       font-size: 14px;
       color: var(--text-primary);
       line-height: 1.45;
       margin: 0;
     }
 
-    #howitworks .arch-box p + p { margin-top: 8px; }
+    .arch-host .arch-box p + p { margin-top: 8px; }
 
-    #howitworks .arch-box ul {
+    .arch-host .arch-box ul {
       list-style: none;
       padding: 0;
       margin: 0;
     }
 
-    #howitworks .arch-box li {
+    .arch-host .arch-box li {
       font-family: var(--mono);
       font-size: 13px;
       padding: 2px 0;
       color: var(--text-muted);
     }
 
-    #howitworks .arch-agent-box li::before { content: "→ "; color: var(--warn); }
-    #howitworks .arch-engine-core { border-color: var(--pass); }
-    #howitworks .arch-agent-box { border-color: var(--warn); }
+    .arch-host .arch-agent-box li::before { content: "→ "; color: var(--warn); }
+    .arch-host .arch-engine-core { border-color: var(--pass); }
+    .arch-host .arch-agent-box { border-color: var(--warn); }
 
-    #howitworks #arch-inputs  { left: 64px;   top: 300px; width: 280px; }
-    #howitworks #arch-engine  { left: 520px;  top: 150px; width: 560px; }
-    #howitworks #arch-agent   { left: 520px;  top: 500px; width: 560px; }
-    #howitworks #arch-grafana { left: 1380px; top: 240px; width: 476px; }
-    #howitworks #arch-console { left: 64px;   top: 860px; width: 1792px; }
+    .arch-host #arch-inputs  { left: 64px;   top: 300px; width: 280px; }
+    .arch-host #arch-engine  { left: 520px;  top: 150px; width: 560px; }
+    .arch-host #arch-agent   { left: 520px;  top: 500px; width: 560px; }
+    .arch-host #arch-grafana { left: 1380px; top: 240px; width: 476px; }
+    .arch-host #arch-console { left: 64px;   top: 860px; width: 1792px; }
 
-    #howitworks .arch-edge {
+    .arch-host .arch-edge {
       position: absolute;
       font-family: var(--mono);
       font-size: 11px;
@@ -1089,7 +1133,7 @@
       transform: translate(-50%, -50%);
     }
 
-    #howitworks .arch-edge.dashed {
+    .arch-host .arch-edge.dashed {
       color: var(--warn);
       border-style: dashed;
       border-color: var(--warn);
@@ -1281,52 +1325,19 @@
 
     <section id="howitworks" hidden aria-label="How it works">
 
-      <p class="hiw-problem">Industry commentary from post-production delivery specialists puts first-submission QC failure in the 20–30% range — a directional figure, <a href="https://github.com/LoordhuJeyakumar/first-pass/blob/main/docs/evidence.md" target="_blank" rel="noopener noreferrer">not an official published statistic</a>. Most often the cause is mundane and preventable: an audio mix delivered at theatrical loudness (~−24 LUFS) against a streaming platform spec requiring ~−27 LUFS. Every rejection incurs redelivery fees and risks missing an announced premiere date.</p>
+      <div class="hiw-back-bar">
+        <button type="button" class="hiw-back" data-hiw-close>← Back to console</button>
+        <a class="hiw-guide-link" href="/how-it-works">Open the full guide</a>
+      </div>
 
-      <div class="arch-scroll">
-        <div class="arch-canvas" id="arch-canvas">
-          <div class="arch-title">First Pass — System Architecture</div>
-          <svg class="arch-wires" id="arch-wires" viewBox="0 0 1856 1080" aria-hidden="true"></svg>
+      <p class="hiw-problem">Industry commentary from post-production delivery specialists puts first-submission QC failure in the 20–30% range — a directional figure, <a href="https://github.com/LoordhuJeyakumar/first-pass/blob/master/docs/evidence.md" target="_blank" rel="noopener noreferrer">not an official published statistic</a>. Most often the cause is mundane and preventable: an audio mix delivered at theatrical loudness (~−24 LUFS) against a streaming platform spec requiring ~−27 LUFS. Every rejection incurs redelivery fees and risks missing an announced premiere date.</p>
 
-          <div class="arch-box" id="arch-inputs">
-            <h2>Inputs</h2>
-            <p>Master metadata JSON</p>
-            <p style="margin-top:8px;color:var(--text-muted)">Destination spec JSON<br><span class="mono" style="font-size:11px">(StreamOne or HallArc — both fictional)</span></p>
-          </div>
+      <div class="arch-host">
+        {% include "partials/arch_diagram.html" %}
+      </div>
 
-          <div class="arch-box arch-engine-core" id="arch-engine">
-            <h2>Deterministic Python Check Engine</h2>
-            <p>Evaluates LUFS, True Peak, HDR, subtitles, packaging, CBFC gating from the master's technical metadata. LLM never computes.</p>
-          </div>
-
-          <div class="arch-box arch-agent-box" id="arch-agent">
-            <h2>FirstPassOrchestrator · single ADK LlmAgent</h2>
-            <p style="margin-bottom:8px;color:var(--text-muted)">Four MCP writes only:</p>
-            <ul>
-              <li>create_incident</li>
-              <li>add_activity_to_incident</li>
-              <li>create_annotation</li>
-              <li>alerting_manage_rules</li>
-            </ul>
-          </div>
-
-          <div class="arch-box" id="arch-grafana">
-            <h2>Grafana Cloud</h2>
-            <ul>
-              <li>Delivery Readiness dashboard</li>
-              <li>Incidents</li>
-              <li>Timeline annotations</li>
-              <li>Alert rules</li>
-            </ul>
-          </div>
-
-          <div class="arch-box" id="arch-console">
-            <h2>Operator Console</h2>
-            <p>Verdict banner · ranked fix plan · per-language readiness · MCP action ledger</p>
-          </div>
-
-          <div class="arch-footer">LLM orchestrates and writes — never computes measurements</div>
-        </div>
+      <div class="hiw-back-after">
+        <button type="button" class="hiw-back" data-hiw-close>← Back to console</button>
       </div>
 
       <p class="hiw-closing">One bounded agent, four allowlisted tools, deterministic Python that the model never touches.</p>
