@@ -6,7 +6,10 @@
 
 Industry commentary from post-production delivery specialists puts first-submission QC failure in the 20–30% range — a directional figure, not an official published statistic ([`docs/evidence.md`](docs/evidence.md)). Most often the cause is mundane and preventable: an audio mix delivered at theatrical loudness (~−24 LUFS) against a streaming platform spec requiring ~−27 LUFS. Every rejection incurs redelivery fees and risks missing an announced premiere date.
 
-First Pass treats delivery readiness as an **observability and automated action problem**. Driven by a deterministic Python check engine and powered by Google ADK with Gemini on Vertex AI, a single bounded agent evaluates technical master metadata against a platform's delivery specification. The same master can pass one destination and fail another — clause numbering and targets differ per spec (StreamOne vs HallArc). Python deterministically pushes the **Delivery Readiness** dashboard directly to Grafana Cloud (`POST /api/dashboards/db`), while the agent acts through four allowlisted Grafana MCP tools:
+First Pass treats delivery readiness as an **observability and automated action problem**.
+A deterministic Python check engine evaluates technical master metadata against a platform's
+delivery specification; a single bounded Google ADK agent on Gemini (Vertex AI) then acts on
+the result. The same master can pass one destination and fail another — clause numbering and targets differ per spec (StreamOne vs HallArc). Python deterministically pushes the **Delivery Readiness** dashboard directly to Grafana Cloud (`POST /api/dashboards/db`), while the agent acts through four allowlisted Grafana MCP tools:
 
 - Opens an **incident** when delivery blockers are detected (`create_incident`).
 - Posts finding details and clause non-conformances to the incident activity log (`add_activity_to_incident`).
